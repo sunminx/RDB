@@ -52,7 +52,7 @@ func Load(server *server.Server, filename string) error {
 func splitArgs(line string) ([]string, bool) {
 	line = strings.Trim(line, " ")
 	args := strings.Split(line, " ")
-	if len(args) < 2 {
+	if len(args) < 3 {
 		return args, false
 	}
 	return args, true
