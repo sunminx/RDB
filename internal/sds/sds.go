@@ -4,13 +4,13 @@ import "slices"
 
 type SDS []byte
 
-func New(ptr []byte) SDS {
-	return (SDS)(ptr)
+func New(ptr []byte) *SDS {
+	return (*SDS)(&ptr)
 }
 
-func NewEmpty() SDS {
+func NewEmpty() *SDS {
 	var bytes []byte
-	return (SDS)(bytes)
+	return (*SDS)(&bytes)
 }
 
 func (s *SDS) Len() int {
@@ -25,7 +25,7 @@ func (s *SDS) Bytes() []byte {
 	return ([]byte)(*s)
 }
 
-func (s *SDS) Dup() SDS {
+func (s *SDS) Dup() *SDS {
 	bytes := make([]byte, s.Len(), s.Cap())
 	copy(bytes, ([]byte)(*s))
 	return New(bytes)
@@ -46,15 +46,15 @@ func (s *SDS) Cmp(t *SDS) int {
 	return slices.Compare(([]byte)(*s), ([]byte)(*t))
 }
 
-func Join(strs []string, sep string) SDS {
-	sdss := make([]SDS, 0, len(strs))
+func Join(strs []string, sep string) *SDS {
+	sdss := make([]*SDS, 0, len(strs))
 	for i := 0; i < len(strs); i++ {
 		sdss = append(sdss, New([]byte(strs[i])))
 	}
 	return JoinSDS(sdss, sep)
 }
 
-func JoinSDS(sdss []SDS, sep string) SDS {
+func JoinSDS(sdss []*SDS, sep string) *SDS {
 	s := NewEmpty()
 	if len(sdss) == 0 {
 		return s
@@ -62,9 +62,9 @@ func JoinSDS(sdss []SDS, sep string) SDS {
 
 	seps := New([]byte(sep))
 	for i := 0; i < len(sdss); i++ {
-		s.Cat(&sdss[i])
+		s.Cat(sdss[i])
 		if i != len(sdss)-1 {
-			s.Cat(&seps)
+			s.Cat(seps)
 		}
 	}
 	return s
@@ -78,4 +78,8 @@ func (s *SDS) Cpy(t string) {
 	if s.Len() < len(t) {
 		(*s) = append((*s), []byte(t[s.Len():])...)
 	}
+}
+
+func (s *SDS) Equal(t *SDS) bool {
+	return slices.Equal(s.Bytes(), t.Bytes())
 }
