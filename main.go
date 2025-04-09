@@ -11,12 +11,10 @@ import (
 )
 
 func main() {
-	var confPath string
-	flag.StringVar(&confPath, "conf", "rdb.conf", "--conf rdb.conf")
+	var configfile string
+	flag.StringVar(&configfile, "conf", "rdb.conf", "--conf rdb.conf")
 
-	server := new(server.Server)
-	if err := conf.Load(server, confPath); err != nil {
-		fmt.Errorf("load configfile: %w", err)
-	}
+	server := server.New()
+	conf.Load(server, configfile)
 	log.Fatal(gnet.Run(server, fmt.Sprintf("tcp://%s:%d", server.Ip, server.Port), gnet.WithReusePort(true)))
 }
