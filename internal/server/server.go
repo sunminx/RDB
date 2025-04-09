@@ -10,6 +10,7 @@ type Server struct {
 	TcpBacklog    int
 	Ip            string
 	Port          int
+	clients       []*Client
 }
 
 func (s *Server) OnTraffic(c gnet.Conn) gnet.Action {
