@@ -31,6 +31,14 @@ func (s *SDS) Dup() *SDS {
 	return New(bytes)
 }
 
+func (s *SDS) DupLine() *SDS {
+	newline, ok := s.SplitNewLine()
+	if !ok {
+		return NewEmpty()
+	}
+	return New(newline)
+}
+
 func (s *SDS) Empty() {
 	if s.Len() == 0 {
 		return
@@ -82,4 +90,18 @@ func (s *SDS) Cpy(t string) {
 
 func (s *SDS) Equal(t *SDS) bool {
 	return slices.Equal(s.Bytes(), t.Bytes())
+}
+
+func (s *SDS) SplitNewLine() ([]byte, bool) {
+	idx := slices.Index(([]byte)(*s), '\n')
+	if idx == -1 {
+		return nil, false
+	}
+	if ([]byte)(*s)[idx-1] == '\r' {
+		idx -= 1
+	}
+	newline := ([]byte)(*s)[:idx]
+	// skip '\r\n'
+	(*s) = (*s)[idx+2:]
+	return newline, true
 }

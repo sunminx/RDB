@@ -164,3 +164,20 @@ func TestEqual(t *testing.T) {
 
 	}
 }
+
+func TestSplitNewLine(t *testing.T) {
+	testcases := []struct {
+		input []byte
+		want  []byte
+	}{
+		{input: []byte("+OK\r\n"), want: []byte("OK")},
+		{input: []byte("$5\r\nhello\r\n"), want: []byte("5")},
+	}
+
+	for _, tc := range testcases {
+		sds := New(tc.input)
+		output, _ := sds.SplitNewLine()
+		t.Log(string(output))
+		t.Log(string(sds.Bytes()))
+	}
+}
