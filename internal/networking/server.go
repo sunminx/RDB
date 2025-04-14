@@ -13,14 +13,25 @@ type Server struct {
 	TcpBacklog    int
 	Ip            string
 	Port          int
-	clients       []*Client
+	Clients       []*Client
 	Requirepass   bool
 	DB            *db.DB
 }
 
-func (s *Server) OnTraffic(c gnet.Conn) gnet.Action {
-	buf, _ := c.Next(-1)
-	c.Write(buf)
+func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action Action) {
+	fd := conn.Fd()
+	if cap[s.Clients] <= fd {
+		oldClients := s.Clients
+		s.Clients = make([]*Client, 0, fd*2)
+		copy(s.Clients, oldClients)
+	}
+	s.Clients[fd] = NewClient(conn)
+	return gnet.None
+}
+
+func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
+	buf, _ := conn.Next(-1)
+	conn.Write(buf)
 	return gnet.None
 }
 
