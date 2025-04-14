@@ -105,3 +105,7 @@ func (s *SDS) SplitNewLine() ([]byte, bool) {
 	(*s) = (*s)[idx+2:]
 	return newline, true
 }
+
+func (s *SDS) FirstByte() byte {
+	return ([]byte)(*s)[0]
+}

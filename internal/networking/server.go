@@ -3,6 +3,7 @@ package networking
 import (
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/db"
+	"github.com/sunminx/RDB/internal/sds"
 )
 
 type Server struct {
@@ -13,26 +14,46 @@ type Server struct {
 	TcpBacklog    int
 	Ip            string
 	Port          int
+	MaxFd         int
 	Clients       []*Client
 	Requirepass   bool
 	DB            *db.DB
 }
 
-func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action Action) {
+func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 	fd := conn.Fd()
-	if cap[s.Clients] <= fd {
+	if cap(s.Clients) <= fd {
 		oldClients := s.Clients
 		s.Clients = make([]*Client, 0, fd*2)
 		copy(s.Clients, oldClients)
 	}
 	s.Clients[fd] = NewClient(conn)
-	return gnet.None
+	return nil, gnet.None
 }
 
 func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
-	buf, _ := conn.Next(-1)
-	conn.Write(buf)
-	return gnet.None
+	if conn.Fd() > s.MaxFd {
+		return gnet.Close
+	}
+
+	return s.readQuery(conn)
+}
+
+var protoIOBufLen = 1024 * 16
+
+func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
+	cli := s.Clients[conn.Fd()]
+	if cli == nil {
+		return gnet.Close
+	}
+
+	buf, err := conn.Next(protoIOBufLen)
+	if err != nil {
+		return gnet.Close
+	}
+
+	cli.querybuf.Cat(sds.New(buf))
+	cli.processInputBuffer()
 }
 
 func NewServer() *Server {

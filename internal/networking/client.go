@@ -5,6 +5,7 @@ import (
 	"strconv"
 
 	"github.com/panjf2000/gnet/v2"
+	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/dict"
 	"github.com/sunminx/RDB/internal/sds"
 )
@@ -40,6 +41,8 @@ type Client struct {
 	argv []*dict.Robj
 
 	reply []byte
+
+	Cmd Cmdable
 }
 
 func NewClient(conn gnet.Conn) *Client {
@@ -52,6 +55,18 @@ func NewClient(conn gnet.Conn) *Client {
 var (
 	ProtoInlineMaxSize = 1024 * 64
 )
+
+func (c *Client) processInputBuffer() {
+	for c.querybuf.Len() > 0 {
+		if c.querybuf.FirstByte() != '*' {
+			_ = c.processInlineBuffer()
+		} else {
+			_ = c.processMultibulkBuffer()
+		}
+
+		c.processCommand()
+	}
+}
 
 // processInlineBuffer
 func (c *Client) processInlineBuffer() bool {
@@ -195,6 +210,27 @@ func (c *Client) processMultibulkBuffer() bool {
 
 func (c *Client) setProtocolError() {
 	c.flags |= ClientCloseAfterReply
+}
+
+func (c *Client) processCommand() {
+	if c.argv[0].Val().(sds.SDS).Equal(sds.New([]byte("quit"))) {
+		return
+	}
+
+	cmd, ok := cmd.LookupCommand(string(c.argv[0].Val().(sds.SDS).Bytes()))
+	if !ok {
+		c.AddReplyError([]byte(fmt.Sprintf(`unknown command %q`, "xxx")))
+	}
+
+	c.call()
+}
+
+func (c *Client) call() {
+	_ = c.Cmd.Proc(c)
+}
+
+type Cmdable interface {
+	Proc(*Client) bool
 }
 
 var Shared map[string][]byte = map[string][]byte{
