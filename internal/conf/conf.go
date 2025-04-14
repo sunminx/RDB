@@ -10,11 +10,11 @@ import (
 	"strconv"
 	"strings"
 
-	"github.com/sunminx/RDB/internal/server"
+	"github.com/sunminx/RDB/internal/networking"
 )
 
 // Load load RDB config file
-func Load(server *server.Server, filename string) {
+func Load(server *networking.Server, filename string) {
 	var err error
 	file, err := os.Open(filename)
 	if err != nil {

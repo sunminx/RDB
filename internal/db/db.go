@@ -1,10 +1,9 @@
-package main
+package db
 
 import (
 	"errors"
 
 	"github.com/sunminx/RDB/internal/dict"
-	"github.com/sunminx/RDB/internal/server"
 )
 
 type DB struct {
@@ -16,7 +15,10 @@ type Dicter interface {
 	Add(string, dict.Robj) bool
 	Replace(string, dict.Robj) bool
 	Del(string) bool
-	Get(string) (dict.Robj, bool)
+	FetchValue(string) (dict.Robj, bool)
+	GetRandomKey() dict.Entry
+	Used() int
+	Size() int
 }
 
 func New() *DB {
@@ -26,19 +28,29 @@ func New() *DB {
 	}
 }
 
-func (db *DB) LookupKeyReadOrReply(client *server.Client, key string) (dict.Robj, error) {
-	val, err := db.LookupRead(key)
-	if err != nil {
-		// todo
-	}
-	return val, err
-}
-
 func (db *DB) LookupKeyRead(key string) (dict.Robj, error) {
 	var err error
-	val, ok := db.dict.Get(key)
+	val, ok := db.dict.FetchValue(key)
 	if !ok {
 		err = errors.New("cannot lookup for " + key)
 	}
 	return val, err
+}
+
+func (db *DB) lookupKey(key string) (dict.Robj, bool) {
+	val, ok := db.dict.FetchValue(key)
+	if ok {
+		// todo
+		return val, true
+	}
+
+	return dict.Robj{}, false
+}
+
+func (db *DB) SetKey(key string, val dict.Robj) {
+	if _, ok := db.dict.FetchValue(key); ok {
+		db.dict.Replace(key, val)
+	} else {
+		db.dict.Add(key, val)
+	}
 }

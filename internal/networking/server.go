@@ -1,6 +1,9 @@
 package networking
 
-import "github.com/panjf2000/gnet/v2"
+import (
+	"github.com/panjf2000/gnet/v2"
+	"github.com/sunminx/RDB/internal/db"
+)
 
 type Server struct {
 	gnet.BuiltinEventEngine
@@ -11,7 +14,8 @@ type Server struct {
 	Ip            string
 	Port          int
 	clients       []*Client
-	requirepass   bool
+	Requirepass   bool
+	DB            *db.DB
 }
 
 func (s *Server) OnTraffic(c gnet.Conn) gnet.Action {
@@ -20,7 +24,7 @@ func (s *Server) OnTraffic(c gnet.Conn) gnet.Action {
 	return gnet.None
 }
 
-func New() *Server {
+func NewServer() *Server {
 	return &Server{
 		MaxIdleTime:   0,
 		TcpKeepalive:  300,
@@ -28,5 +32,6 @@ func New() *Server {
 		TcpBacklog:    512,
 		Ip:            "0.0.0.0",
 		Port:          6379,
+		DB:            db.New(),
 	}
 }

@@ -10,7 +10,7 @@ type RobjType int
 
 const (
 	UnknownType RobjType = iota
-	SdsType
+	ObjString
 )
 
 type Robj struct {
@@ -27,10 +27,23 @@ func NewMap() *MapDict {
 func NewRobj(obj any) *Robj {
 	switch obj.(type) {
 	case *sds.SDS:
-		return &Robj{SdsType, obj}
+		return &Robj{ObjString, obj}
 	default:
 	}
 	return &Robj{UnknownType, nil}
+}
+
+func (o *Robj) Val() any {
+	return o.val
+}
+
+func (o *Robj) Type() RobjType {
+	return o._type
+}
+
+type Entry struct {
+	key string
+	val Robj
 }
 
 func (d *MapDict) Add(key string, val Robj) bool {
@@ -56,7 +69,19 @@ func (d *MapDict) Del(key string) bool {
 	return true
 }
 
-func (d *MapDict) Get(key string) (Robj, bool) {
+func (d *MapDict) FetchValue(key string) (Robj, bool) {
 	val, ok := d.dict[key]
 	return val, ok
+}
+
+func (d *MapDict) GetRandomKey() Entry {
+	return Entry{}
+}
+
+func (d *MapDict) Used() int {
+	return len(d.dict)
+}
+
+func (d *MapDict) Size() int {
+	return 0
 }

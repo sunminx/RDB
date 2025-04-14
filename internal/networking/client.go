@@ -26,8 +26,8 @@ const (
 
 type Client struct {
 	gnet.Conn
-	fd     int
-	server *Server
+	fd  int
+	Srv *Server
 
 	flags         ClientFlag
 	authenticated bool
@@ -97,7 +97,7 @@ const maxBulksWhileUnauth = 16384
 const protoMaxBulkLen = 1024
 
 // processMulitbulkBuffer
-func (c *Client) processMulitbulkBuffer() bool {
+func (c *Client) processMultibulkBuffer() bool {
 	var newline []byte
 	var ok bool
 
@@ -125,7 +125,7 @@ func (c *Client) processMulitbulkBuffer() bool {
 			return false
 		}
 
-		if ll > maxMulitbulksWhileUnauth && c.server.requirepass && !c.authenticated {
+		if ll > maxMulitbulksWhileUnauth && c.Srv.Requirepass && !c.authenticated {
 			c.AddReplyError([]byte("Protocol error: unauthenticated multibulk length"))
 			c.setProtocolError()
 			return false
@@ -167,7 +167,7 @@ func (c *Client) processMulitbulkBuffer() bool {
 				c.setProtocolError()
 				return false
 			}
-			if ll > maxBulksWhileUnauth && c.server.requirepass && !c.authenticated {
+			if ll > maxBulksWhileUnauth && c.Srv.Requirepass && !c.authenticated {
 				c.AddReplyError([]byte("Protocol error: unauthenticated bulk length"))
 				c.setProtocolError()
 			}
@@ -197,8 +197,22 @@ func (c *Client) setProtocolError() {
 	c.flags |= ClientCloseAfterReply
 }
 
-func (c *Client) AddReply(val dict.Robj) {
+var Shared map[string][]byte = map[string][]byte{
+	"wrongtypeerr": []byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"),
+	"crlf":         []byte("\r\n"),
+	"ok":           []byte("OK"),
+}
 
+func (c *Client) AddReply(obj dict.Robj) {
+	switch obj.Type() {
+	case dict.ObjString:
+		c.AddReplySds(obj.Val().(*sds.SDS))
+	default:
+	}
+}
+
+func (c *Client) AddReplySds(s *sds.SDS) {
+	c.reply = append(c.reply, s.Bytes()...)
 }
 
 func (c *Client) AddReplyError(err []byte) {
@@ -216,6 +230,22 @@ func (c *Client) AddReplyStatus(status []byte) {
 	c.reply = append(c.reply, []byte("\r\n")...)
 }
 
-func (c *Client) addReplyToBuffer(buf []byte) {
-	c.reply = append(c.reply, buf...)
+func (c *Client) AddReplyBulk(obj dict.Robj) {
+	c.addReplyBulkLen(obj)
+	c.AddReply(obj)
+	c.addReplyBytes(Shared["crlf"])
+}
+
+func (c *Client) addReplyBulkLen(obj dict.Robj) {
+	llen := obj.Val().(*sds.SDS).Len()
+	slen := strconv.Itoa(llen)
+	c.addReplyString("$" + slen + "\r\n")
+}
+
+func (c *Client) addReplyString(s string) {
+	c.reply = append(c.reply, []byte(s)...)
+}
+
+func (c *Client) addReplyBytes(b []byte) {
+	c.reply = append(c.reply, b...)
 }
