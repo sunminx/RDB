@@ -44,7 +44,7 @@ var protoIOBufLen = 1024 * 16
 
 func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 	cli := s.Clients[conn.Fd()]
-	if cli == nil {
+	if cli == nil || cli.fd == -1 {
 		return gnet.Close
 	}
 
@@ -58,6 +58,8 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 	return gnet.None
 }
 
+const defMaxFd = 1024
+
 func NewServer() *Server {
 	return &Server{
 		MaxIdleTime:   0,
@@ -67,7 +69,17 @@ func NewServer() *Server {
 		Ip:            "0.0.0.0",
 		Port:          6379,
 		DB:            db.New(),
+		MaxFd:         defMaxFd,
+		Clients:       initClients(defMaxFd),
 	}
+}
+
+func initClients(n int) []*Client {
+	clis := make([]*Client, n, n)
+	for i := 0; i < n; i++ {
+		clis[i] = nilClient()
+	}
+	return clis
 }
 
 func LookupCommand(name string) (cmd.Command, bool) {

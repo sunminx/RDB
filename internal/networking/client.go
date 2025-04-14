@@ -55,6 +55,12 @@ func NewClient(conn gnet.Conn) *Client {
 	}
 }
 
+func nilClient() *Client {
+	cli := new(Client)
+	cli.fd = -1
+	return cli
+}
+
 func (c *Client) Key() string {
 	if c.argc == 0 {
 		return ""
