@@ -1,19 +1,14 @@
 package cmd
 
 import (
+	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/dict"
-	"github.com/sunminx/RDB/internal/networking"
-	"github.com/sunminx/RDB/internal/sds"
 )
 
-func GetCommand(cli *networking.Client) bool {
-	robj := cli.Srv.DB.LookupKeyReadOrReply(cli, cli.argv[1])
-	if robj == nil {
-		return OK
-	}
-
+func GetCommand(cli client) bool {
+	robj := cli.LookupKey(cli.Key())
 	if robj.Type() != dict.ObjString {
-		cli.AddReply(networking.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
 
@@ -21,11 +16,12 @@ func GetCommand(cli *networking.Client) bool {
 	return OK
 }
 
-func SetCommand(cli *networking.Client) bool {
-	key := string(cli.argv[1].Val().(*sds.SDS).Bytes())
-	for i := 2; i < cli.argc; i++ {
-		cli.Srv.DB.Add(key, argv[i])
+func SetCommand(cli client) bool {
+	key := cli.Key()
+	argv := cli.Argv()
+	for i := 2; i < len(argv); i++ {
+		cli.SetKey(key, *argv[i])
 	}
-	cli.AddReplyStatus(networking.Shared["ok"])
+	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }

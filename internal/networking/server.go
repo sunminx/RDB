@@ -2,6 +2,7 @@ package networking
 
 import (
 	"github.com/panjf2000/gnet/v2"
+	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/sds"
 )
@@ -54,6 +55,7 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 
 	cli.querybuf.Cat(sds.New(buf))
 	cli.processInputBuffer()
+	return gnet.None
 }
 
 func NewServer() *Server {
@@ -66,4 +68,13 @@ func NewServer() *Server {
 		Port:          6379,
 		DB:            db.New(),
 	}
+}
+
+func LookupCommand(name string) (cmd.Command, bool) {
+	for _, command := range cmd.CommandTable {
+		if name == command.Name {
+			return command, true
+		}
+	}
+	return cmd.EmptyCommand, false
 }

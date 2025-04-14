@@ -6,6 +6,8 @@ import (
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
+	"github.com/sunminx/RDB/internal/common"
+	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/dict"
 	"github.com/sunminx/RDB/internal/sds"
 )
@@ -27,6 +29,7 @@ const (
 
 type Client struct {
 	gnet.Conn
+	*db.DB
 	fd  int
 	Srv *Server
 
@@ -42,7 +45,7 @@ type Client struct {
 
 	reply []byte
 
-	Cmd Cmdable
+	Cmd cmd.Command
 }
 
 func NewClient(conn gnet.Conn) *Client {
@@ -50,6 +53,22 @@ func NewClient(conn gnet.Conn) *Client {
 		Conn: conn,
 		fd:   conn.Fd(),
 	}
+}
+
+func (c *Client) Key() string {
+	if c.argc == 0 {
+		return ""
+	}
+	return string(c.argv[0].Val().([]byte))
+}
+
+func (c *Client) Argv() []*dict.Robj {
+	return c.argv
+}
+
+func (c *Client) LookupKey(key string) dict.Robj {
+	obj, _ := c.Srv.DB.LookupKeyRead(key)
+	return obj
 }
 
 var (
@@ -213,30 +232,21 @@ func (c *Client) setProtocolError() {
 }
 
 func (c *Client) processCommand() {
-	if c.argv[0].Val().(sds.SDS).Equal(sds.New([]byte("quit"))) {
+	if c.argv[0].Val().(*sds.SDS).Equal(sds.New([]byte("quit"))) {
 		return
 	}
 
-	cmd, ok := cmd.LookupCommand(string(c.argv[0].Val().(sds.SDS).Bytes()))
+	cmd, ok := LookupCommand(string(c.argv[0].Val().(*sds.SDS).Bytes()))
 	if !ok {
 		c.AddReplyError([]byte(fmt.Sprintf(`unknown command %q`, "xxx")))
+		return
 	}
-
+	c.Cmd = cmd
 	c.call()
 }
 
 func (c *Client) call() {
 	_ = c.Cmd.Proc(c)
-}
-
-type Cmdable interface {
-	Proc(*Client) bool
-}
-
-var Shared map[string][]byte = map[string][]byte{
-	"wrongtypeerr": []byte("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n"),
-	"crlf":         []byte("\r\n"),
-	"ok":           []byte("OK"),
 }
 
 func (c *Client) AddReply(obj dict.Robj) {
@@ -269,7 +279,7 @@ func (c *Client) AddReplyStatus(status []byte) {
 func (c *Client) AddReplyBulk(obj dict.Robj) {
 	c.addReplyBulkLen(obj)
 	c.AddReply(obj)
-	c.addReplyBytes(Shared["crlf"])
+	c.addReplyBytes(common.Shared["crlf"])
 }
 
 func (c *Client) addReplyBulkLen(obj dict.Robj) {
