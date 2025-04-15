@@ -134,7 +134,10 @@ func (c *Client) processInputBuffer() {
 		}
 
 		if c.argc == 0 {
-
+			c.argv = make([]dict.Robj, 0)
+			c.multibulklen = 0
+			c.bulklen = -1
+			c.reqtype = protoReqNone
 		} else {
 			c.processCommand()
 		}
@@ -281,7 +284,6 @@ func (c *Client) processMultibulkBuffer() bool {
 	}
 
 	if c.multibulklen == 0 {
-		c.reqtype = protoReqNone
 		return true
 	}
 	return false
@@ -305,10 +307,8 @@ func (c *Client) processCommand() {
 	}
 	c.Cmd = cmd
 	c.call()
-
 clean:
 	c.argc = 0
-	c.argv = make([]dict.Robj, 0)
 	return
 }
 
