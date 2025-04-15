@@ -26,7 +26,7 @@ func NewMap() *MapDict {
 
 func NewRobj(obj any) Robj {
 	switch obj.(type) {
-	case *sds.SDS:
+	case sds.SDS:
 		return Robj{ObjString, obj}
 	default:
 	}

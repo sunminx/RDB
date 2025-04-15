@@ -3,6 +3,7 @@ package networking
 import (
 	"fmt"
 	"strconv"
+	"strings"
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
@@ -23,8 +24,17 @@ const (
 	ClientBlocked
 	ClientDirtyCas
 	ClientCloseAfterReply
+	ClientCloseASAP
 
 	ClientNone = 0
+)
+
+type reqType int
+
+const (
+	protoReqNone reqType = iota
+	protoReqMultibulk
+	protoReqInline
 )
 
 type Client struct {
@@ -37,6 +47,7 @@ type Client struct {
 	authenticated bool
 
 	querybuf     sds.SDS
+	reqtype      reqType
 	multibulklen int
 	bulklen      int
 
@@ -48,11 +59,19 @@ type Client struct {
 	Cmd cmd.Command
 }
 
-func NewClient(conn gnet.Conn) *Client {
+func NewClient(conn gnet.Conn, db *db.DB) *Client {
 	return &Client{
-		Conn:     conn,
-		fd:       conn.Fd(),
-		querybuf: sds.NewEmpty(),
+		Conn:          conn,
+		DB:            db,
+		fd:            conn.Fd(),
+		querybuf:      sds.NewEmpty(),
+		multibulklen:  0,
+		bulklen:       -1,
+		reqtype:       protoReqNone,
+		argc:          0,
+		argv:          make([]dict.Robj, 0),
+		reply:         make([]byte, 0),
+		authenticated: true,
 	}
 }
 
@@ -62,11 +81,21 @@ func nilClient() *Client {
 	return cli
 }
 
+func (c *Client) setServer(srv *Server) {
+	c.Srv = srv
+}
+
 func (c *Client) Key() string {
-	if c.argc == 0 {
+	return c.argvByIdx(1)
+}
+
+func (c *Client) argvByIdx(n int) string {
+	if c.argc < n-1 {
 		return ""
 	}
-	return string(c.argv[0].Val().([]byte))
+
+	argvn := c.argv[n].Val().(sds.SDS)
+	return string(argvn.Bytes())
 }
 
 func (c *Client) Argv() []dict.Robj {
@@ -74,7 +103,7 @@ func (c *Client) Argv() []dict.Robj {
 }
 
 func (c *Client) LookupKey(key string) dict.Robj {
-	obj, _ := c.Srv.DB.LookupKeyRead(key)
+	obj, _ := c.LookupKeyRead(key)
 	return obj
 }
 
@@ -84,20 +113,36 @@ var (
 
 func (c *Client) processInputBuffer() {
 	for c.querybuf.Len() > 0 {
-		if c.querybuf.FirstByte() != '*' {
-			_ = c.processInlineBuffer()
-		} else {
-			_ = c.processMultibulkBuffer()
+		if c.reqtype == protoReqNone {
+			if c.querybuf.FirstByte() == '*' {
+				c.reqtype = protoReqMultibulk
+			} else {
+				c.reqtype = protoReqInline
+			}
 		}
 
-		c.processCommand()
+		if c.reqtype == protoReqInline {
+			if !c.processInlineBuffer() {
+				break
+			}
+		} else if c.reqtype == protoReqMultibulk {
+			if !c.processMultibulkBuffer() {
+				break
+			}
+		} else {
+			panic("unknown request type")
+		}
+
+		if c.argc == 0 {
+
+		} else {
+			c.processCommand()
+		}
 	}
 }
 
 // processInlineBuffer
 func (c *Client) processInlineBuffer() bool {
-	var newline []byte
-
 	newline, ok := c.querybuf.SplitNewLine()
 	if !ok {
 		return false
@@ -110,7 +155,6 @@ func (c *Client) processInlineBuffer() bool {
 		}
 		return false
 	}
-	fmt.Println(string(newline))
 	c.argv = splitArgs(newline, ' ')
 	if len(c.argv) == 0 {
 		c.AddReplyError([]byte("Protocol error: unbalanced quotes in request"))
@@ -222,13 +266,21 @@ func (c *Client) processMultibulkBuffer() bool {
 			break
 		}
 
-		c.argv[c.argc] = dict.NewRobj(c.querybuf.DupLine())
+		s := c.querybuf.DupLine()
+		if s.Len() != c.bulklen {
+			c.AddReplyError([]byte("Protocol error: incorrect bulk length"))
+			c.setProtocolError()
+			return false
+		}
+
+		c.argv[c.argc] = dict.NewRobj(s)
 		c.argc += 1
 		c.bulklen = -1
 		c.multibulklen -= 1
 	}
 
 	if c.multibulklen == 0 {
+		c.reqtype = protoReqNone
 		return true
 	}
 	return false
@@ -239,17 +291,24 @@ func (c *Client) setProtocolError() {
 }
 
 func (c *Client) processCommand() {
-	if c.argv[0].Val().(*sds.SDS).Equal(sds.New([]byte("quit"))) {
+	name := c.argvByIdx(0)
+	name = strings.ToLower(name)
+	if name == "quit" {
+		c.flags |= ClientCloseASAP
 		return
 	}
-
-	cmd, ok := LookupCommand(string(c.argv[0].Val().(*sds.SDS).Bytes()))
+	cmd, ok := LookupCommand(name)
 	if !ok {
 		c.AddReplyError([]byte(fmt.Sprintf(`unknown command %q`, "xxx")))
-		return
+		goto clean
 	}
 	c.Cmd = cmd
 	c.call()
+
+clean:
+	c.argc = 0
+	c.argv = make([]dict.Robj, 0)
+	return
 }
 
 func (c *Client) call() {
@@ -259,12 +318,12 @@ func (c *Client) call() {
 func (c *Client) AddReply(obj dict.Robj) {
 	switch obj.Type() {
 	case dict.ObjString:
-		c.AddReplySds(obj.Val().(*sds.SDS))
+		c.AddReplySds(obj.Val().(sds.SDS))
 	default:
 	}
 }
 
-func (c *Client) AddReplySds(s *sds.SDS) {
+func (c *Client) AddReplySds(s sds.SDS) {
 	c.reply = append(c.reply, s.Bytes()...)
 }
 
@@ -290,8 +349,8 @@ func (c *Client) AddReplyBulk(obj dict.Robj) {
 }
 
 func (c *Client) addReplyBulkLen(obj dict.Robj) {
-	llen := obj.Val().(*sds.SDS).Len()
-	slen := strconv.Itoa(llen)
+	s := obj.Val().(sds.SDS)
+	slen := strconv.Itoa(s.Len())
 	c.addReplyString("$" + slen + "\r\n")
 }
 

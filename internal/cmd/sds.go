@@ -2,15 +2,14 @@ package cmd
 
 import (
 	"github.com/sunminx/RDB/internal/common"
-	"github.com/sunminx/RDB/internal/dict"
 )
 
 func GetCommand(cli client) bool {
 	robj := cli.LookupKey(cli.Key())
-	if robj.Type() != dict.ObjString {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
-		return ERR
-	}
+	//if robj.Type() != dict.ObjString {
+	//	cli.AddReplyError(common.Shared["wrongtypeerr"])
+	//	return ERR
+	//}
 
 	cli.AddReplyBulk(robj)
 	return OK

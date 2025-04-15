@@ -1,6 +1,8 @@
 package sds
 
-import "slices"
+import (
+	"slices"
+)
 
 type SDS []byte
 
@@ -9,7 +11,7 @@ func New(bytes []byte) SDS {
 }
 
 func NewEmpty() SDS {
-	var bytes []byte
+	var bytes = make([]byte, 0, 0)
 	return (SDS)(bytes)
 }
 
@@ -93,7 +95,7 @@ func (s *SDS) Equal(t SDS) bool {
 }
 
 func (s *SDS) SplitNewLine() ([]byte, bool) {
-	idx := slices.Index(([]byte)(*s), '\n')
+	idx := slices.Index(s.Bytes(), '\n')
 	if idx == -1 {
 		return nil, false
 	}

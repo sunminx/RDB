@@ -23,6 +23,18 @@ func TestNew(t *testing.T) {
 	}
 }
 
+func TestNewEmpty(t *testing.T) {
+	output := NewEmpty()
+	if !slices.Equal([]byte{}, output.Bytes()) {
+		t.Error("sds NewEmpty failed")
+	}
+
+	t.Log("start" + string(output.Bytes()) + "end")
+	t.Log("len = ", len(output.Bytes()))
+	output.Cat(New([]byte("hello")))
+	t.Log(string(output.Bytes()))
+}
+
 func TestDup(t *testing.T) {
 	testcases := []struct {
 		input []byte
@@ -172,6 +184,7 @@ func TestSplitNewLine(t *testing.T) {
 	}{
 		{input: []byte("+OK\r\n"), want: []byte("OK")},
 		{input: []byte("$5\r\nhello\r\n"), want: []byte("5")},
+		{input: []byte(" *3\r\n$3\r\nset\r\n$4\r\nname\r\n$3\r\njim\r\n"), want: []byte("3")},
 	}
 
 	for _, tc := range testcases {

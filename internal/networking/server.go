@@ -1,6 +1,8 @@
 package networking
 
 import (
+	"fmt"
+
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
@@ -30,8 +32,23 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 		copy(s.Clients, oldClients)
 	}
 
-	s.Clients[fd] = NewClient(conn)
+	cli := NewClient(conn, s.DB)
+	cli.setServer(s)
+	s.Clients[fd] = cli
 	return nil, gnet.None
+}
+
+func (s *Server) OnClose(conn gnet.Conn, err error) (action gnet.Action) {
+	fd := conn.Fd()
+	if fd > s.MaxFd {
+		s.Clients[fd] = nilClient()
+	}
+
+	if err != nil {
+		fmt.Printf("******* err: %v\n", err)
+	}
+
+	return gnet.None
 }
 
 func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
@@ -39,6 +56,7 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 		return gnet.Close
 	}
 
+	fmt.Println("****************** read")
 	return s.readQuery(conn)
 }
 
@@ -50,13 +68,27 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 		return gnet.Close
 	}
 
-	buf, err := conn.Next(protoIOBufLen)
+	buf, err := conn.Next(-1)
 	if err != nil {
 		return gnet.Close
 	}
+	fmt.Println("buf:", string(buf))
 
 	cli.querybuf.Cat(sds.New(buf))
 	cli.processInputBuffer()
+
+	if (cli.flags & ClientCloseASAP) != 0 {
+		return gnet.Close
+	}
+
+	if len(cli.reply) > 0 {
+		conn.Write(cli.reply)
+		cli.reply = make([]byte, 0)
+	}
+
+	if (cli.flags & ClientCloseAfterReply) != 0 {
+		return gnet.Close
+	}
 	return gnet.None
 }
 
