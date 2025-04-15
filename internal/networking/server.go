@@ -1,8 +1,6 @@
 package networking
 
 import (
-	"fmt"
-
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
@@ -45,7 +43,6 @@ func (s *Server) OnClose(conn gnet.Conn, err error) (action gnet.Action) {
 	}
 
 	if err != nil {
-		fmt.Printf("******* err: %v\n", err)
 	}
 
 	return gnet.None
@@ -56,7 +53,6 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 		return gnet.Close
 	}
 
-	fmt.Println("****************** read")
 	return s.readQuery(conn)
 }
 
@@ -72,7 +68,6 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 	if err != nil {
 		return gnet.Close
 	}
-	fmt.Println("buf:", string(buf))
 
 	cli.querybuf.Cat(sds.New(buf))
 	cli.processInputBuffer()

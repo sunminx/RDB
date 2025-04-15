@@ -179,7 +179,8 @@ func splitArgs(bytes []byte, sep byte) []dict.Robj {
 
 const maxMulitbulksWhileUnauth = 10
 const maxBulksWhileUnauth = 16384
-const protoMaxBulkLen = 1024
+
+var protoMaxBulkLen = 1024 * 1024 * 512
 
 // processMulitbulkBuffer
 func (c *Client) processMultibulkBuffer() bool {
@@ -247,7 +248,7 @@ func (c *Client) processMultibulkBuffer() bool {
 				return false
 			}
 			ll, err := strconv.Atoi(string(newline[1:]))
-			if err != nil || ll > ProtoInlineMaxSize {
+			if err != nil || ll > protoMaxBulkLen {
 				c.AddReplyError([]byte("Protocol error: invalid bulk length"))
 				c.setProtocolError()
 				return false
