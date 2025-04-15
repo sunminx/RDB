@@ -11,7 +11,7 @@ const (
 
 type client interface {
 	Key() string
-	Argv() []*dict.Robj
+	Argv() []dict.Robj
 	LookupKey(string) dict.Robj
 	SetKey(string, dict.Robj)
 	AddReply(dict.Robj)

@@ -23,11 +23,13 @@ type Server struct {
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 	fd := conn.Fd()
-	if cap(s.Clients) <= fd {
+	if s.MaxFd <= fd {
+		s.MaxFd = 2 * fd
 		oldClients := s.Clients
-		s.Clients = make([]*Client, 0, fd*2)
+		s.Clients = initClients(s.MaxFd)
 		copy(s.Clients, oldClients)
 	}
+
 	s.Clients[fd] = NewClient(conn)
 	return nil, gnet.None
 }

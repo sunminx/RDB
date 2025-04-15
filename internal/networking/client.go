@@ -41,7 +41,7 @@ type Client struct {
 	bulklen      int
 
 	argc int
-	argv []*dict.Robj
+	argv []dict.Robj
 
 	reply []byte
 
@@ -50,8 +50,9 @@ type Client struct {
 
 func NewClient(conn gnet.Conn) *Client {
 	return &Client{
-		Conn: conn,
-		fd:   conn.Fd(),
+		Conn:     conn,
+		fd:       conn.Fd(),
+		querybuf: sds.NewEmpty(),
 	}
 }
 
@@ -68,7 +69,7 @@ func (c *Client) Key() string {
 	return string(c.argv[0].Val().([]byte))
 }
 
-func (c *Client) Argv() []*dict.Robj {
+func (c *Client) Argv() []dict.Robj {
 	return c.argv
 }
 
@@ -119,8 +120,8 @@ func (c *Client) processInlineBuffer() bool {
 	return true
 }
 
-func splitArgs(bytes []byte, sep byte) []*dict.Robj {
-	res := make([]*dict.Robj, 0)
+func splitArgs(bytes []byte, sep byte) []dict.Robj {
+	res := make([]dict.Robj, 0)
 	i := 0
 	for j := 0; j < len(bytes); j++ {
 		if bytes[j] == sep {
@@ -176,7 +177,7 @@ func (c *Client) processMultibulkBuffer() bool {
 		}
 
 		c.multibulklen = ll
-		c.argv = make([]*dict.Robj, ll)
+		c.argv = make([]dict.Robj, ll)
 	}
 
 	for c.multibulklen > 0 {

@@ -24,13 +24,13 @@ func NewMap() *MapDict {
 	}
 }
 
-func NewRobj(obj any) *Robj {
+func NewRobj(obj any) Robj {
 	switch obj.(type) {
 	case *sds.SDS:
-		return &Robj{ObjString, obj}
+		return Robj{ObjString, obj}
 	default:
 	}
-	return &Robj{UnknownType, nil}
+	return Robj{UnknownType, nil}
 }
 
 func (o *Robj) Val() any {

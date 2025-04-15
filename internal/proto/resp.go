@@ -1,4 +1,4 @@
-package resp
+package proto
 
 import (
 	"errors"

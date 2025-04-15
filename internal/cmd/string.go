@@ -20,7 +20,7 @@ func SetCommand(cli client) bool {
 	key := cli.Key()
 	argv := cli.Argv()
 	for i := 2; i < len(argv); i++ {
-		cli.SetKey(key, *argv[i])
+		cli.SetKey(key, argv[i])
 	}
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
