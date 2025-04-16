@@ -331,6 +331,10 @@ func (c *Client) AddReplySds(s sds.SDS) {
 	c.reply = append(c.reply, s.Bytes()...)
 }
 
+func (c *Client) AddReplyRaw(bytes []byte) {
+	c.reply = append(c.reply, bytes...)
+}
+
 func (c *Client) AddReplyError(err []byte) {
 	if len(err) == 0 || err[0] != '-' {
 		c.reply = append(c.reply, []byte("-ERR ")...)
@@ -348,9 +352,9 @@ func (c *Client) AddReplyStatus(status []byte) {
 
 func (c *Client) AddReplyInt64(n int64) {
 	if n == 0 {
-		c.addReplyBytes(common.Shared["czero"])
+		c.AddReplyRaw(common.Shared["czero"])
 	} else if n == 1 {
-		c.addReplyBytes(common.Shared["cone"])
+		c.AddReplyRaw(common.Shared["cone"])
 	} else {
 		c.addReplyInt64WithPrefix(n, []byte{':'})
 	}
@@ -365,7 +369,7 @@ func (c *Client) addReplyInt64WithPrefix(n int64, prefix []byte) {
 func (c *Client) AddReplyBulk(obj dict.Robj) {
 	c.addReplyBulkLen(obj)
 	c.AddReply(obj)
-	c.addReplyBytes(common.Shared["crlf"])
+	c.AddReplyRaw(common.Shared["crlf"])
 }
 
 func (c *Client) addReplyBulkLen(obj dict.Robj) {
@@ -376,8 +380,4 @@ func (c *Client) addReplyBulkLen(obj dict.Robj) {
 
 func (c *Client) addReplyString(s string) {
 	c.reply = append(c.reply, []byte(s)...)
-}
-
-func (c *Client) addReplyBytes(b []byte) {
-	c.reply = append(c.reply, b...)
 }

@@ -16,9 +16,10 @@ type client interface {
 	SetKey(string, dict.Robj)
 	DelKey(string)
 	AddReply(dict.Robj)
+	AddReplyRaw([]byte)
 	AddReplyStatus([]byte)
-	AddReplyInt64(int64)
 	AddReplyError([]byte)
+	AddReplyInt64(int64)
 	AddReplyBulk(dict.Robj)
 }
 
