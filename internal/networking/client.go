@@ -102,9 +102,12 @@ func (c *Client) Argv() []dict.Robj {
 	return c.argv
 }
 
-func (c *Client) LookupKey(key string) dict.Robj {
-	obj, _ := c.LookupKeyRead(key)
-	return obj
+func (c *Client) LookupKey(key string) (dict.Robj, bool) {
+	obj, err := c.LookupKeyRead(key)
+	if err != nil {
+		return obj, false
+	}
+	return obj, true
 }
 
 var (
@@ -264,9 +267,9 @@ func (c *Client) processMultibulkBuffer() bool {
 			c.bulklen = ll
 		}
 
-		// read bulk argument
-		if c.querybuf.Len() < c.bulklen {
-			// not enough data
+		// Read bulk argument
+		if c.querybuf.Len() < c.bulklen+2 {
+			// Not enough data (+2 == trailing \r\n)
 			break
 		}
 
@@ -341,6 +344,22 @@ func (c *Client) AddReplyStatus(status []byte) {
 	c.reply = append(c.reply, '+')
 	c.reply = append(c.reply, status...)
 	c.reply = append(c.reply, []byte("\r\n")...)
+}
+
+func (c *Client) AddReplyInt64(n int64) {
+	if n == 0 {
+		c.addReplyBytes(common.Shared["czero"])
+	} else if n == 1 {
+		c.addReplyBytes(common.Shared["cone"])
+	} else {
+		c.addReplyInt64WithPrefix(n, []byte{':'})
+	}
+	return
+}
+
+func (c *Client) addReplyInt64WithPrefix(n int64, prefix []byte) {
+	s := string(prefix) + strconv.FormatInt(n, 10) + "\r\n"
+	c.addReplyString(s)
 }
 
 func (c *Client) AddReplyBulk(obj dict.Robj) {

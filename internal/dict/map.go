@@ -28,6 +28,8 @@ func NewRobj(obj any) Robj {
 	switch obj.(type) {
 	case sds.SDS:
 		return Robj{ObjString, obj}
+	case []byte:
+		return Robj{ObjString, sds.New(obj.([]byte))}
 	default:
 	}
 	return Robj{UnknownType, nil}
@@ -62,7 +64,7 @@ func (d *MapDict) Replace(key string, val Robj) bool {
 
 func (d *MapDict) Del(key string) bool {
 	_, ok := d.dict[key]
-	if ok {
+	if !ok {
 		return false
 	}
 	delete(d.dict, key)

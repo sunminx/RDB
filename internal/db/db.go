@@ -54,3 +54,7 @@ func (db *DB) SetKey(key string, val dict.Robj) {
 		db.dict.Add(key, val)
 	}
 }
+
+func (db *DB) DelKey(key string) {
+	db.dict.Del(key)
+}

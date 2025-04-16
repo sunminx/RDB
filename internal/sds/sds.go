@@ -27,6 +27,10 @@ func (s *SDS) Bytes() []byte {
 	return ([]byte)(*s)
 }
 
+func (s *SDS) String() string {
+	return string(s.Bytes())
+}
+
 func (s *SDS) Dup() SDS {
 	bytes := make([]byte, s.Len(), s.Cap())
 	copy(bytes, ([]byte)(*s))
