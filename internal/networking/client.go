@@ -52,7 +52,7 @@ type Client struct {
 	bulklen      int
 
 	argc int
-	argv []dict.Robj
+	argv []sds.SDS
 
 	reply []byte
 
@@ -69,7 +69,7 @@ func NewClient(conn gnet.Conn, db *db.DB) *Client {
 		bulklen:       -1,
 		reqtype:       protoReqNone,
 		argc:          0,
-		argv:          make([]dict.Robj, 0),
+		argv:          make([]sds.SDS, 0),
 		reply:         make([]byte, 0),
 		authenticated: true,
 	}
@@ -94,11 +94,10 @@ func (c *Client) argvByIdx(n int) string {
 		return ""
 	}
 
-	argvn := c.argv[n].Val().(sds.SDS)
-	return string(argvn.Bytes())
+	return string(c.argv[n].Bytes())
 }
 
-func (c *Client) Argv() []dict.Robj {
+func (c *Client) Argv() []sds.SDS {
 	return c.argv
 }
 
@@ -129,7 +128,7 @@ func (c *Client) processInputBuffer() {
 		}
 
 		if c.argc == 0 {
-			c.argv = make([]dict.Robj, 0)
+			c.argv = make([]sds.SDS, 0)
 			c.multibulklen = 0
 			c.bulklen = -1
 			c.reqtype = protoReqNone
@@ -162,16 +161,16 @@ func (c *Client) processInlineBuffer() bool {
 	return true
 }
 
-func splitArgs(bytes []byte, sep byte) []dict.Robj {
-	res := make([]dict.Robj, 0)
+func splitArgs(bytes []byte, sep byte) []sds.SDS {
+	res := make([]sds.SDS, 0)
 	i := 0
 	for j := 0; j < len(bytes); j++ {
 		if bytes[j] == sep {
-			res = append(res, dict.NewRobj(sds.New(bytes[i:j])))
+			res = append(res, sds.New(bytes[i:j]))
 			i = j
 		}
 	}
-	res = append(res, dict.NewRobj(sds.New(bytes[i:])))
+	res = append(res, sds.New(bytes[i:]))
 	return res
 }
 
@@ -220,7 +219,7 @@ func (c *Client) processMultibulkBuffer() bool {
 		}
 
 		c.multibulklen = ll
-		c.argv = make([]dict.Robj, ll)
+		c.argv = make([]sds.SDS, ll)
 	}
 
 	for c.multibulklen > 0 {
@@ -272,7 +271,7 @@ func (c *Client) processMultibulkBuffer() bool {
 			return false
 		}
 
-		c.argv[c.argc] = dict.NewRobj(s)
+		c.argv[c.argc] = s
 		c.argc += 1
 		c.bulklen = -1
 		c.multibulklen -= 1
@@ -299,8 +298,7 @@ func (c *Client) processCommand() {
 	if !ok {
 		var args string
 		for i := 1; i < c.argc; i++ {
-			argvi := c.argv[i].Val().(sds.SDS)
-			args += fmt.Sprintf("%q, ", argvi.String())
+			args += fmt.Sprintf("%q, ", c.argv[i].String())
 			if len(args) >= 128 {
 				args = args[:128]
 				break

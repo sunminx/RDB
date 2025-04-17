@@ -1,10 +1,13 @@
 package db
 
 import (
+	"sync"
+
 	"github.com/sunminx/RDB/internal/dict"
 )
 
 type DB struct {
+	sync.RWMutex
 	dict    Dicter
 	expires Dicter
 }
@@ -20,10 +23,7 @@ type Dicter interface {
 }
 
 func New() *DB {
-	return &DB{
-		dict:    dict.NewMap(),
-		expires: dict.NewMap(),
-	}
+	return &DB{sync.RWMutex{}, dict.NewMap(), dict.NewMap()}
 }
 
 func (db *DB) LookupKeyRead(key string) (dict.Robj, bool) {
@@ -36,6 +36,8 @@ func (db *DB) LookupKeyWrite(key string) (dict.Robj, bool) {
 }
 
 func (db *DB) lookupKey(key string) (dict.Robj, bool) {
+	db.RLock()
+	defer db.RUnlock()
 	val, ok := db.dict.FetchValue(key)
 	if ok {
 		// todo
@@ -46,6 +48,8 @@ func (db *DB) lookupKey(key string) (dict.Robj, bool) {
 }
 
 func (db *DB) SetKey(key string, val dict.Robj) {
+	db.Lock()
+	defer db.Unlock()
 	_ = val.TryObjectEncoding()
 
 	if _, ok := db.dict.FetchValue(key); ok {
@@ -56,5 +60,7 @@ func (db *DB) SetKey(key string, val dict.Robj) {
 }
 
 func (db *DB) DelKey(key string) {
+	db.Lock()
+	defer db.Unlock()
 	db.dict.Del(key)
 }

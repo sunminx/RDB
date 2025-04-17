@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"github.com/sunminx/RDB/internal/dict"
+	"github.com/sunminx/RDB/internal/sds"
 )
 
 const (
@@ -11,7 +12,7 @@ const (
 
 type client interface {
 	Key() string
-	Argv() []dict.Robj
+	Argv() []sds.SDS
 	LookupKeyRead(string) (dict.Robj, bool)
 	LookupKeyWrite(string) (dict.Robj, bool)
 	SetKey(string, dict.Robj)

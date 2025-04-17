@@ -3,7 +3,6 @@ package cmd
 import (
 	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/dict"
-	"github.com/sunminx/RDB/internal/sds"
 )
 
 func GetCommand(cli client) bool {
@@ -25,7 +24,7 @@ func SetCommand(cli client) bool {
 	key := cli.Key()
 	argv := cli.Argv()
 	for i := 2; i < len(argv); i++ {
-		cli.SetKey(key, argv[i])
+		cli.SetKey(key, dict.NewRobj(argv[i]))
 	}
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
@@ -35,8 +34,7 @@ func DelCommand(cli client) bool {
 	var numdel int64
 	argv := cli.Argv()
 	for i := 1; i < len(argv); i++ {
-		argvi := argv[i].Val().(sds.SDS)
-		cli.DelKey(argvi.String())
+		cli.DelKey(argv[i].String())
 		numdel += 1
 	}
 	cli.AddReplyInt64(numdel)
@@ -47,8 +45,7 @@ func ExistsCommand(cli client) bool {
 	var numexists int64
 	argv := cli.Argv()
 	for i := 1; i < len(argv); i++ {
-		argvi := argv[i].Val().(sds.SDS)
-		if _, ok := cli.LookupKeyRead(argvi.String()); ok {
+		if _, ok := cli.LookupKeyRead(argv[i].String()); ok {
 			numexists += 1
 		}
 	}
