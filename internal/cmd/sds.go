@@ -24,13 +24,38 @@ func GetCommand(cli client) bool {
 	return OK
 }
 
+var emptySDS = sds.NewEmpty()
+
 func SetCommand(cli client) bool {
 	key := cli.Key()
 	argv := cli.Argv()
 	for i := 2; i < len(argv); i++ {
-		cli.SetKey(key, dict.NewRobj(argv[i]))
+		_ = setGenericCommand(cli, key, argv[i], emptySDS)
 	}
 	cli.AddReplyStatus(common.Shared["ok"])
+	return OK
+}
+
+func SetexCommand(cli client) bool {
+	key := cli.Key()
+	argv := cli.Argv()
+	return setGenericCommand(cli, key, argv[3], argv[2])
+}
+
+func AppendCommand(cli client) bool {
+	key := cli.Key()
+	argv := cli.Argv()
+	robj, ok := cli.LookupKeyRead(key)
+	if !ok {
+		_ = setGenericCommand(cli, key, argv[2], emptySDS)
+		return OK
+	}
+	if !robj.CheckType(dict.ObjString) {
+		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		return ERR
+	}
+	val := robj.Val().(sds.SDS)
+	val.Cat(argv[2])
 	return OK
 }
 
