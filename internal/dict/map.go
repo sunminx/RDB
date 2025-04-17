@@ -2,6 +2,7 @@ package dict
 
 import (
 	"strconv"
+	"time"
 
 	"github.com/sunminx/RDB/internal/sds"
 )
@@ -43,7 +44,7 @@ func NewRobj(obj any) Robj {
 		return Robj{ObjString, ObjEncodingRaw, obj}
 	case []byte:
 		return Robj{ObjString, ObjEncodingRaw, sds.New(obj.([]byte))}
-	case int64:
+	case int64, time.Duration:
 		return Robj{ObjString, ObjEncodingInt, obj}
 	default:
 	}

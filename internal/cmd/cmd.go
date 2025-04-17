@@ -1,6 +1,8 @@
 package cmd
 
 import (
+	"time"
+
 	"github.com/sunminx/RDB/internal/dict"
 	"github.com/sunminx/RDB/internal/sds"
 )
@@ -16,11 +18,13 @@ type client interface {
 	LookupKeyRead(string) (dict.Robj, bool)
 	LookupKeyWrite(string) (dict.Robj, bool)
 	SetKey(string, dict.Robj)
+	SetExpire(string, time.Duration)
 	DelKey(string)
 	AddReply(dict.Robj)
 	AddReplyRaw([]byte)
 	AddReplyStatus([]byte)
 	AddReplyError([]byte)
+	AddReplyErrorFormat(string, ...any)
 	AddReplyInt64(int64)
 	AddReplyBulk(dict.Robj)
 }

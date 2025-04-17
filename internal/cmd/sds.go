@@ -1,8 +1,12 @@
 package cmd
 
 import (
+	"strconv"
+	"time"
+
 	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/dict"
+	"github.com/sunminx/RDB/internal/sds"
 )
 
 func GetCommand(cli client) bool {
@@ -27,6 +31,26 @@ func SetCommand(cli client) bool {
 		cli.SetKey(key, dict.NewRobj(argv[i]))
 	}
 	cli.AddReplyStatus(common.Shared["ok"])
+	return OK
+}
+
+func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
+	var milliseconds int64
+
+	if !expire.IsEmpty() {
+		var err error
+		milliseconds, err = strconv.ParseInt(expire.String(), 10, 64)
+		if err != nil {
+			cli.AddReplyErrorFormat(`invalid expire time in %s`, key)
+			return OK
+		}
+	}
+
+	cli.SetKey(key, dict.NewRobj(val))
+	if !expire.IsEmpty() {
+		now := time.Now().UnixMilli()
+		cli.SetExpire(key, time.Duration(now+milliseconds))
+	}
 	return OK
 }
 

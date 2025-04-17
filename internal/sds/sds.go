@@ -19,6 +19,10 @@ func (s *SDS) Len() int {
 	return len(([]byte)(*s))
 }
 
+func (s *SDS) IsEmpty() bool {
+	return s.Len() == 0
+}
+
 func (s *SDS) Cap() int {
 	return cap(([]byte)(*s))
 }

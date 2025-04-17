@@ -2,17 +2,18 @@ package db
 
 import (
 	"sync"
+	"time"
 
 	"github.com/sunminx/RDB/internal/dict"
 )
 
 type DB struct {
 	sync.RWMutex
-	dict    Dicter
-	expires Dicter
+	dict    dicter
+	expires dicter
 }
 
-type Dicter interface {
+type dicter interface {
 	Add(string, dict.Robj) bool
 	Replace(string, dict.Robj) bool
 	Del(string) bool
@@ -57,6 +58,12 @@ func (db *DB) SetKey(key string, val dict.Robj) {
 	} else {
 		db.dict.Add(key, val)
 	}
+}
+
+func (db *DB) SetExpire(key string, expire time.Duration) {
+	db.Lock()
+	defer db.Unlock()
+	db.expires.Replace(key, dict.NewRobj(expire))
 }
 
 func (db *DB) DelKey(key string) {
