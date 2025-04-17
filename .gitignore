@@ -1,2 +1,3 @@
 *.swp
 RDB
+tests/__pycache__/
