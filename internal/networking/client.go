@@ -297,9 +297,23 @@ func (c *Client) processCommand() {
 	}
 	cmd, ok := LookupCommand(name)
 	if !ok {
-		c.AddReplyError([]byte(fmt.Sprintf(`unknown command %q`, "xxx")))
+		var args string
+		for i := 1; i < c.argc; i++ {
+			argvi := c.argv[i].Val().(sds.SDS)
+			args += fmt.Sprintf("%q, ", argvi.String())
+			if len(args) >= 128 {
+				args = args[:128]
+				break
+			}
+		}
+		c.AddReplyErrorFormat(`unknown command %q, with args beginning with: %s`,
+			name, args)
+		goto clean
+	} else if (cmd.Arity > 0 && cmd.Arity != c.argc) || (c.argc < -cmd.Arity) {
+		c.AddReplyErrorFormat(`wrong number of arguments for %q command`, name)
 		goto clean
 	}
+
 	c.Cmd = cmd
 	c.call()
 clean:
@@ -336,6 +350,11 @@ func (c *Client) AddReplyError(err []byte) {
 
 	c.reply = append(c.reply, err...)
 	c.reply = append(c.reply, []byte("\r\n")...)
+}
+
+func (c *Client) AddReplyErrorFormat(format string, args ...any) {
+	err := fmt.Sprintf(format, args...)
+	c.AddReplyError([]byte(err))
 }
 
 func (c *Client) AddReplyStatus(status []byte) {
