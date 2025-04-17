@@ -102,14 +102,6 @@ func (c *Client) Argv() []dict.Robj {
 	return c.argv
 }
 
-func (c *Client) LookupKey(key string) (dict.Robj, bool) {
-	obj, err := c.LookupKeyRead(key)
-	if err != nil {
-		return obj, false
-	}
-	return obj, true
-}
-
 var (
 	ProtoInlineMaxSize = 1024 * 64
 )
@@ -320,11 +312,13 @@ func (c *Client) call() {
 }
 
 func (c *Client) AddReply(obj dict.Robj) {
-	switch obj.Type() {
-	case dict.ObjString:
+	if obj.SDSEncodedObject() {
 		c.AddReplySds(obj.Val().(sds.SDS))
-	default:
+	} else {
+		num := obj.Val().(int64)
+		c.addReplyString(strconv.FormatInt(num, 10))
 	}
+	return
 }
 
 func (c *Client) AddReplySds(s sds.SDS) {
@@ -373,8 +367,24 @@ func (c *Client) AddReplyBulk(obj dict.Robj) {
 }
 
 func (c *Client) addReplyBulkLen(obj dict.Robj) {
-	s := obj.Val().(sds.SDS)
-	slen := strconv.Itoa(s.Len())
+	var slen string
+	if obj.SDSEncodedObject() {
+		s := obj.Val().(sds.SDS)
+		slen = strconv.Itoa(s.Len())
+	} else {
+		n := obj.Val().(int64)
+
+		_len := 1
+		if n < 0 {
+			_len += 1
+			n = -n
+		}
+
+		for n = n / 10; n != 0; n = n / 10 {
+			_len += 1
+		}
+		slen = strconv.Itoa(_len)
+	}
 	c.addReplyString("$" + slen + "\r\n")
 }
 

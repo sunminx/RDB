@@ -1,8 +1,6 @@
 package db
 
 import (
-	"errors"
-
 	"github.com/sunminx/RDB/internal/dict"
 )
 
@@ -28,13 +26,13 @@ func New() *DB {
 	}
 }
 
-func (db *DB) LookupKeyRead(key string) (dict.Robj, error) {
-	var err error
-	val, ok := db.dict.FetchValue(key)
-	if !ok {
-		err = errors.New("cannot lookup for " + key)
-	}
-	return val, err
+func (db *DB) LookupKeyRead(key string) (dict.Robj, bool) {
+	return db.lookupKey(key)
+}
+
+func (db *DB) LookupKeyWrite(key string) (dict.Robj, bool) {
+	// todo
+	return db.lookupKey(key)
 }
 
 func (db *DB) lookupKey(key string) (dict.Robj, bool) {
@@ -48,6 +46,8 @@ func (db *DB) lookupKey(key string) (dict.Robj, bool) {
 }
 
 func (db *DB) SetKey(key string, val dict.Robj) {
+	_ = val.TryObjectEncoding()
+
 	if _, ok := db.dict.FetchValue(key); ok {
 		db.dict.Replace(key, val)
 	} else {
