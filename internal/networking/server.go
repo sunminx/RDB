@@ -27,6 +27,7 @@ type Server struct {
 	Hz            int
 	LogLevel      string
 	LogPath       string
+	Version       string
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -118,6 +119,7 @@ func NewServer() *Server {
 		Hz:            100,
 		LogLevel:      "notice",
 		LogPath:       "/dev/null",
+		Version:       "0.0.1",
 	}
 }
 

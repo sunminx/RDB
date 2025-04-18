@@ -54,5 +54,6 @@ var CommandTable []Command = []Command{
 	{"incr", IncrCommand, 2, "wmF", 0, 1, 1, 1, 0, 0},
 	{"decr", DecrCommand, 2, "wmF", 0, 1, 1, 1, 0, 0},
 	{"append", AppendCommand, 3, "wmF", 0, 1, 1, 1, 0, 0},
+	{"strlen", StrlenCommand, 2, "rF", 0, 1, 1, 1, 0, 0},
 	{"setex", SetexCommand, 4, "wmF", 0, 1, 1, 1, 0, 0},
 }

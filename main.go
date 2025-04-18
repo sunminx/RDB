@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"log"
+	"log/slog"
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/common"
@@ -18,6 +19,8 @@ func main() {
 	server := networking.NewServer()
 	conf.Load(server, configfile)
 	//slog.SetLogLoggerLevel(common.ToSlogLevel(server.LogLevel))
+
+	slog.Info(common.Logo(server.Version))
 
 	var opts = []gnet.Option{
 		gnet.WithReusePort(true),

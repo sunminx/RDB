@@ -65,6 +65,21 @@ func AppendCommand(cli client) bool {
 	return OK
 }
 
+func StrlenCommand(cli client) bool {
+	key := cli.Key()
+	robj, ok := cli.LookupKeyRead(key)
+	if !ok {
+		cli.AddReplyRaw(common.Shared["czero"])
+		return OK
+	}
+	if !robj.CheckType(dict.ObjString) {
+		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		return OK
+	}
+	cli.AddReplyInt64(robj.StringObjectLen())
+	return OK
+}
+
 func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 	var milliseconds int64
 

@@ -94,6 +94,62 @@ func (o *Robj) TryObjectEncoding() error {
 	return nil
 }
 
+func (o *Robj) StringObjectLen() int64 {
+	if o.SDSEncodedObject() {
+		s := o.val.(sds.SDS)
+		return int64(s.Len())
+	} else {
+		return digit10(o.val.(int64))
+	}
+}
+
+func digit10(n int64) int64 {
+	var _len int64
+	if n < 0 {
+		_len = 1
+		n = -n
+	}
+
+	if n < 10 {
+		return _len + 1
+	}
+	if n < 100 {
+		return _len + 2
+	}
+	if n < 1000 {
+		return _len + 3
+	}
+	// < 12
+	if n < 1000000000000 {
+		// 4-8
+		if n < 100000000 {
+			// 4-6
+			if n < 1000000 {
+				// 4 [1000, 9999]
+				if n < 10000 {
+					return _len + 4
+				}
+				// 5-6
+				return _len + 5 + cond(n >= 100000)
+			}
+			// 7-8
+			return _len + 7 + cond(n >= 10000000)
+		}
+		if n < 10000000000 {
+			return _len + 9 + cond(n >= 1000000000)
+		}
+		return _len + 11 + cond(n >= 100000000000)
+	}
+	return _len + 12 + digit10(n/1000000000000)
+}
+
+func cond(c bool) int64 {
+	if c {
+		return 1
+	}
+	return 0
+}
+
 func (o *Robj) CheckType(_type RobjType) bool {
 	return o._type == _type
 }
