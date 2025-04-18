@@ -114,6 +114,18 @@ type Entry struct {
 	val Robj
 }
 
+func (e *Entry) Key() string {
+	return e.key
+}
+
+func (e *Entry) TimeDurationVal() time.Duration {
+	t, ok := e.val.Val().(int64)
+	if !ok {
+		return time.Duration(0)
+	}
+	return time.Duration(t)
+}
+
 func (d *MapDict) Add(key string, val Robj) bool {
 	_, ok := d.dict[key]
 	if ok {

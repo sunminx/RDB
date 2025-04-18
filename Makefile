@@ -2,6 +2,9 @@
 
 refresh: clean build
 
+run: clean build
+	./RDB
+
 build:
 	go build
 

@@ -63,11 +63,63 @@ func (db *DB) SetKey(key string, val dict.Robj) {
 func (db *DB) SetExpire(key string, expire time.Duration) {
 	db.Lock()
 	defer db.Unlock()
-	db.expires.Replace(key, dict.NewRobj(expire))
+	db.expires.Replace(key, dict.NewRobj(int64(expire)))
 }
 
 func (db *DB) DelKey(key string) {
 	db.Lock()
 	defer db.Unlock()
 	db.dict.Del(key)
+}
+
+const (
+	activeExpireCycleLookupsPerLoop = 20
+)
+
+func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
+	start := time.Now()
+	exit := false
+	for iteration := 0; !exit; iteration++ {
+		expired := 0
+		n := db.expires.Used()
+		if n > activeExpireCycleLookupsPerLoop {
+			n = activeExpireCycleLookupsPerLoop
+		}
+
+		for ; n > 0; n-- {
+			e := db.expires.GetRandomKey()
+			if db.activeExpireCycleTryExpire(e, time.Now()) {
+				expired += 1
+			}
+		}
+
+		if iteration%16 == 0 {
+			elapsed := time.Now().Sub(start)
+			if elapsed > timelimit {
+				exit = true
+			}
+		}
+
+		if expired < activeExpireCycleLookupsPerLoop/4 {
+			exit = true
+		}
+	}
+	return
+}
+
+func (db *DB) activeExpireCycleTryExpire(entry dict.Entry, now time.Time) bool {
+	key := entry.Key()
+	expire := entry.TimeDurationVal()
+	// expired
+	if now.UnixMilli() > int64(expire) {
+		return db.syncDel(key)
+	}
+	return false
+}
+
+func (db *DB) syncDel(key string) bool {
+	if db.expires.Used() > 0 {
+		_ = db.expires.Del(key)
+	}
+	return db.dict.Del(key)
 }

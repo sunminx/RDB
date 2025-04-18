@@ -18,5 +18,5 @@ func main() {
 	conf.Load(server, configfile)
 	log.Fatal(gnet.Run(server,
 		fmt.Sprintf("tcp://%s:%d", server.Ip, server.Port),
-		gnet.WithReusePort(true)))
+		gnet.WithReusePort(true), gnet.WithTicker(true)))
 }

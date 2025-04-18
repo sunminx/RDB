@@ -1,6 +1,8 @@
 package networking
 
 import (
+	"time"
+
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
@@ -19,6 +21,8 @@ type Server struct {
 	Clients       []*Client
 	Requirepass   bool
 	DB            *db.DB
+	CronLoops     int64
+	Hz            int
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -54,6 +58,11 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 	}
 
 	return s.readQuery(conn)
+}
+
+func (s *Server) OnTick() (time.Duration, gnet.Action) {
+	s.cron()
+	return time.Duration(1000/s.Hz) * time.Millisecond, gnet.None
 }
 
 var protoIOBufLen = 1024 * 16
@@ -100,6 +109,8 @@ func NewServer() *Server {
 		DB:            db.New(),
 		MaxFd:         defMaxFd,
 		Clients:       initClients(defMaxFd),
+		CronLoops:     0,
+		Hz:            100,
 	}
 }
 
@@ -118,4 +129,18 @@ func LookupCommand(name string) (cmd.Command, bool) {
 		}
 	}
 	return cmd.EmptyCommand, false
+}
+
+const (
+	activeExpireCycleSlowTimePerc = 25
+)
+
+func (s *Server) cron() {
+	s.databasesCron()
+}
+
+func (s *Server) databasesCron() {
+	// delete expired key
+	expireTimeLimit := 1000000 * activeExpireCycleSlowTimePerc / s.Hz / 100
+	s.DB.ActiveExpireCycle(time.Duration(expireTimeLimit))
 }

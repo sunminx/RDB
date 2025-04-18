@@ -41,6 +41,14 @@ class TestString(unittest.TestCase):
         for i in range(9999, -1, -1):
             self.assertEqual(str(i), self.cli.get(i))
 
+    def test_append(self):
+        key, val = "x", "foo"
+        self.cli.set(key, val)
+        self.assertEqual(val, self.cli.get(key))
+        val += "bar"
+        self.cli.set(key, val)
+        self.assertEqual(val, self.cli.get(key))
+
     def tearDown(self):
         if self.cli is not None:
             self.cli.close()

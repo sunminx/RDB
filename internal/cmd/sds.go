@@ -39,7 +39,9 @@ func SetCommand(cli client) bool {
 func SetexCommand(cli client) bool {
 	key := cli.Key()
 	argv := cli.Argv()
-	return setGenericCommand(cli, key, argv[3], argv[2])
+	_ = setGenericCommand(cli, key, argv[3], argv[2])
+	cli.AddReplyStatus(common.Shared["ok"])
+	return OK
 }
 
 func AppendCommand(cli client) bool {
