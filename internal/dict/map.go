@@ -1,6 +1,8 @@
 package dict
 
 import (
+	"crypto/rand"
+	"encoding/binary"
 	"strconv"
 	"time"
 
@@ -53,6 +55,10 @@ func NewRobj(obj any) Robj {
 
 func (o *Robj) Val() any {
 	return o.val
+}
+
+func (o *Robj) SetVal(val any) {
+	o.val = val
 }
 
 func (o *Robj) Type() RobjType {
@@ -154,8 +160,31 @@ func (d *MapDict) FetchValue(key string) (Robj, bool) {
 	return val, ok
 }
 
+var emptyEntry = Entry{}
+
 func (d *MapDict) GetRandomKey() Entry {
-	return Entry{}
+	times := random() % d.Used()
+	n := 0
+	for key, val := range d.dict {
+		if n == times {
+			return Entry{key, val}
+		}
+		n++
+	}
+	return emptyEntry
+}
+
+func random() int {
+	buf := make([]byte, 4)
+	_, err := rand.Read(buf)
+	if err != nil {
+		return 0
+	}
+	n := int(binary.LittleEndian.Uint32(buf[:]))
+	if n < 0 {
+		return -n
+	}
+	return n
 }
 
 func (d *MapDict) Used() int {

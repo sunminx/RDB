@@ -28,7 +28,7 @@ func New() *DB {
 }
 
 func (db *DB) LookupKeyRead(key string) (dict.Robj, bool) {
-	return db.lookupKey(key)
+	return db.lookupKeyReadWithFlags(key)
 }
 
 func (db *DB) LookupKeyWrite(key string) (dict.Robj, bool) {
@@ -46,6 +46,30 @@ func (db *DB) lookupKey(key string) (dict.Robj, bool) {
 	}
 
 	return dict.Robj{}, false
+}
+
+var emptyRobj = dict.Robj{}
+
+func (db *DB) lookupKeyReadWithFlags(key string) (dict.Robj, bool) {
+	db.Lock()
+	defer db.Unlock()
+
+	if db.expireIfNeeded(key) {
+		return emptyRobj, false
+	}
+	val, ok := db.dict.FetchValue(key)
+	if ok {
+		// todo
+		return val, true
+	}
+	return emptyRobj, false
+}
+
+func (db *DB) expireIfNeeded(key string) bool {
+	if !db.keyIsExpired(key) {
+		return false
+	}
+	return db.syncDel(key)
 }
 
 func (db *DB) SetKey(key string, val dict.Robj) {
@@ -115,6 +139,15 @@ func (db *DB) activeExpireCycleTryExpire(entry dict.Entry, now time.Time) bool {
 		return db.syncDel(key)
 	}
 	return false
+}
+
+func (db *DB) keyIsExpired(key string) bool {
+	v, ok := db.expires.FetchValue(key)
+	if !ok {
+		return false
+	}
+	expire, _ := v.Val().(int64)
+	return (time.Now().UnixMilli() - expire) > 0
 }
 
 func (db *DB) syncDel(key string) bool {

@@ -60,13 +60,17 @@ func Load(server *networking.Server, filename string) {
 					goto loaderr
 				}
 				server.ProtectedMode = yesorno
-			case args[0] == "ip" && len(args) == 2:
-				server.Ip = args[0]
+			case args[0] == "bind" && len(args) == 2:
+				server.Ip = args[1]
 			case args[0] == "port" && len(args) == 2:
-				if port, err := strconv.Atoi(args[0]); err == nil {
+				if port, err := strconv.Atoi(args[1]); err == nil {
 					server.Port = port
 				}
-
+			case args[0] == "loglevel" && len(args) == 2:
+				server.LogLevel = args[1]
+			case args[0] == "logfile" && len(args) == 2:
+				server.LogPath = args[1]
+			default:
 			}
 		}
 
@@ -76,6 +80,8 @@ func Load(server *networking.Server, filename string) {
 		}
 		return
 	}
+	server.ProtoAddr = fmt.Sprintf("tcp://%s:%d", server.Ip, server.Port)
+
 loaderr:
 	slog.Error(err.Error())
 	panic("load rdb.conf")

@@ -1,6 +1,7 @@
 package networking
 
 import (
+	"fmt"
 	"time"
 
 	"github.com/panjf2000/gnet/v2"
@@ -17,12 +18,15 @@ type Server struct {
 	TcpBacklog    int
 	Ip            string
 	Port          int
+	ProtoAddr     string
 	MaxFd         int
 	Clients       []*Client
 	Requirepass   bool
 	DB            *db.DB
 	CronLoops     int64
 	Hz            int
+	LogLevel      string
+	LogPath       string
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -106,11 +110,14 @@ func NewServer() *Server {
 		TcpBacklog:    512,
 		Ip:            "0.0.0.0",
 		Port:          6379,
+		ProtoAddr:     fmt.Sprintf("tcp://%s:%d", "0.0.0.0", 6379),
 		DB:            db.New(),
 		MaxFd:         defMaxFd,
 		Clients:       initClients(defMaxFd),
 		CronLoops:     0,
 		Hz:            100,
+		LogLevel:      "notice",
+		LogPath:       "/dev/null",
 	}
 }
 

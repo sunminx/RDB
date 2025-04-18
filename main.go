@@ -2,12 +2,13 @@ package main
 
 import (
 	"flag"
-	"fmt"
 	"log"
 
 	"github.com/panjf2000/gnet/v2"
+	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/conf"
 	"github.com/sunminx/RDB/internal/networking"
+	"github.com/sunminx/RDB/pkg/rlog"
 )
 
 func main() {
@@ -16,7 +17,14 @@ func main() {
 
 	server := networking.NewServer()
 	conf.Load(server, configfile)
-	log.Fatal(gnet.Run(server,
-		fmt.Sprintf("tcp://%s:%d", server.Ip, server.Port),
-		gnet.WithReusePort(true), gnet.WithTicker(true)))
+	//slog.SetLogLoggerLevel(common.ToSlogLevel(server.LogLevel))
+
+	var opts = []gnet.Option{
+		gnet.WithReusePort(true),
+		gnet.WithTicker(true),
+		gnet.WithLogger(rlog.New()),
+		gnet.WithLogLevel(common.ToGnetLevel(server.LogLevel)),
+		gnet.WithLogPath(server.LogPath),
+	}
+	log.Fatal(gnet.Run(server, server.ProtoAddr, opts...))
 }

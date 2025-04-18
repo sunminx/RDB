@@ -58,6 +58,10 @@ func AppendCommand(cli client) bool {
 	}
 	val := robj.Val().(sds.SDS)
 	val.Cat(argv[2])
+	robj.SetVal(val)
+	_ = setGenericCommand(cli, key, val, emptySDS)
+
+	cli.AddReplyBulk(robj)
 	return OK
 }
 
