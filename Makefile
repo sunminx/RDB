@@ -2,8 +2,8 @@
 
 refresh: clean build
 
-run: clean build
-	./RDB
+run:
+	@./RDB
 
 build:
 	go build
