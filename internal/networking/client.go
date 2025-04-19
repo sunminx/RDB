@@ -41,7 +41,7 @@ type Client struct {
 	gnet.Conn
 	*db.DB
 	fd  int
-	Srv *Server
+	srv *Server
 
 	flags         ClientFlag
 	authenticated bool
@@ -56,7 +56,8 @@ type Client struct {
 
 	reply []byte
 
-	Cmd cmd.Command
+	Cmd             cmd.Command
+	LastInteraction int64
 }
 
 func NewClient(conn gnet.Conn, db *db.DB) *Client {
@@ -81,8 +82,8 @@ func nilClient() *Client {
 	return cli
 }
 
-func (c *Client) setServer(srv *Server) {
-	c.Srv = srv
+func (c *Client) isNil() bool {
+	return c.fd == -1
 }
 
 func (c *Client) Key() string {
@@ -208,7 +209,7 @@ func (c *Client) processMultibulkBuffer() bool {
 			return false
 		}
 
-		if ll > maxMulitbulksWhileUnauth && c.Srv.Requirepass && !c.authenticated {
+		if ll > maxMulitbulksWhileUnauth && c.srv.Requirepass && !c.authenticated {
 			c.AddReplyError([]byte("Protocol error: unauthenticated multibulk length"))
 			c.setProtocolError()
 			return false
@@ -250,7 +251,7 @@ func (c *Client) processMultibulkBuffer() bool {
 				c.setProtocolError()
 				return false
 			}
-			if ll > maxBulksWhileUnauth && c.Srv.Requirepass && !c.authenticated {
+			if ll > maxBulksWhileUnauth && c.srv.Requirepass && !c.authenticated {
 				c.AddReplyError([]byte("Protocol error: unauthenticated bulk length"))
 				c.setProtocolError()
 			}
@@ -407,4 +408,17 @@ func (c *Client) addReplyBulkLen(obj dict.Robj) {
 
 func (c *Client) addReplyString(s string) {
 	c.reply = append(c.reply, []byte(s)...)
+}
+
+func (c *Client) handleTimeout(now int64) bool {
+	timeouted := c.srv.MaxIdleTime > 0 && (now-c.LastInteraction) > c.srv.MaxIdleTime
+	if timeouted {
+		c.free()
+		c.srv.delClient(c.fd)
+	}
+	return timeouted
+}
+
+func (c *Client) free() {
+	c.Close()
 }

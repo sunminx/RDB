@@ -12,7 +12,7 @@ import (
 
 type Server struct {
 	gnet.BuiltinEventEngine
-	MaxIdleTime   int
+	MaxIdleTime   int64
 	TcpKeepalive  int
 	ProtectedMode bool
 	TcpBacklog    int
@@ -40,7 +40,8 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 	}
 
 	cli := NewClient(conn, s.DB)
-	cli.setServer(s)
+	cli.srv = s
+	cli.LastInteraction = time.Now().UnixMilli()
 	s.Clients[fd] = cli
 	return nil, gnet.None
 }
@@ -77,6 +78,7 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 	if cli == nil || cli.fd == -1 {
 		return gnet.Close
 	}
+	cli.LastInteraction = time.Now().UnixMilli()
 
 	buf, err := conn.Next(-1)
 	if err != nil {
@@ -124,8 +126,8 @@ func NewServer() *Server {
 }
 
 func initClients(n int) []*Client {
-	clis := make([]*Client, n, n)
-	for i := 0; i < n; i++ {
+	clis := make([]*Client, n+1, n+1)
+	for i := 0; i < n+1; i++ {
 		clis[i] = nilClient()
 	}
 	return clis
@@ -146,10 +148,28 @@ const (
 
 func (s *Server) cron() {
 	s.databasesCron()
+	s.clientsCron()
 }
 
 func (s *Server) databasesCron() {
 	// delete expired key
 	expireTimeLimit := 1000000 * activeExpireCycleSlowTimePerc / s.Hz / 100
 	s.DB.ActiveExpireCycle(time.Duration(expireTimeLimit))
+}
+
+func (s *Server) clientsCron() {
+	now := time.Now()
+	for i := s.MaxFd; i >= 0; i-- {
+		cli := s.Clients[i]
+		if cli.isNil() {
+			continue
+		}
+		if cli.handleTimeout(now.UnixMilli()) {
+			continue
+		}
+	}
+}
+
+func (s *Server) delClient(fd int) {
+	s.Clients = append(s.Clients[:fd], s.Clients[fd+1:]...)
 }

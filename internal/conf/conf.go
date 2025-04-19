@@ -38,8 +38,8 @@ func Load(server *networking.Server, filename string) {
 			args[0] = strings.ToLower(args[0])
 			switch {
 			case args[0] == "timeout" && len(args) == 2:
-				var timeout int
-				timeout, err = strconv.Atoi(args[1])
+				var timeout int64
+				timeout, err = strconv.ParseInt(args[1], 10, 64)
 				if err != nil || timeout < 0 {
 					err = errors.New("invalid timeout value")
 					goto loaderr
