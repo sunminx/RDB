@@ -97,7 +97,7 @@ func (zl *ziplist) decodeEntry(offset int32) (entry any, entrysize int32) {
 			entry = binary.LittleEndian.Uint64([]byte(*zl)[conoffset : conoffset+_len])
 		}
 	}
-	entrysize = conoffset + _len
+	entrysize = prevlensize + lensize + _len
 	return
 }
 
@@ -106,7 +106,8 @@ const (
 	intType int8 = 1
 )
 
-func (zl *ziplist) decodeEntryEncoding(offset int32) (strorint int8, lensize, _len int32) {
+func (zl *ziplist) decodeEntryEncoding(offset int32) (strorint int8,
+	lensize, _len int32) {
 	// _type: first two bit of byte
 	_type := []byte(*zl)[offset] & zipStrMask
 	encoding := []byte(*zl)[offset : offset+4]
@@ -147,8 +148,6 @@ func zipIntSize(_type byte, _ []byte) (int32, int32) {
 		return 1, 1
 	case zipInt16b:
 		return 1, 2
-	case zipInt24b:
-		return 1, 3
 	case zipInt32b:
 		return 1, 4
 	case zipInt64b:
@@ -161,23 +160,10 @@ func zipIntSize(_type byte, _ []byte) (int32, int32) {
 func (zl *ziplist) encodeEntry(prevlen int32, content []byte) []byte {
 	entry := make([]byte, 0)
 	entry = append(entry, encodePrevLen(prevlen)...)
-	_type, _len, encoding := zl.encodeEntryEncoding(content)
-	entry = append(entry, encoding...)
+	_type, _, encoded := zl.encodeEntryEncoding(content)
+	entry = append(entry, encoded...)
 	if _type == strType {
 		entry = append(entry, content...)
-	} else {
-		num, _ := strconv.ParseInt(string(content), 10, 32)
-		if _len == 8 {
-			entry = append(entry, content...)
-		} else if _len == 16 {
-			buf := make([]byte, 2)
-			binary.BigEndian.PutUint16(buf, uint16(num))
-			entry = append(entry, buf...)
-		} else if _len == 32 {
-			buf := make([]byte, 4)
-			binary.BigEndian.PutUint32(buf, uint32(num))
-			entry = append(entry, buf...)
-		}
 	}
 	return entry
 }
@@ -197,18 +183,20 @@ func (zl *ziplist) encodeEntryEncoding(content []byte) (int8, int32, []byte) {
 func zipIntEncoding(num int32) (int32, []byte) {
 	var buf []byte
 	switch {
-	case num >= 0 && num <= 12:
-		return 0, []byte{byte(0xf1 + num)}
-	case num >= math.MinInt8 && num <= math.MaxInt8:
-		return 8, []byte{zipInt8b}
-	case num >= math.MinInt16 && num <= math.MaxInt16:
-		buf = make([]byte, 2)
-		binary.BigEndian.PutUint16(buf, uint16(num))
-		return 16, buf
-	case num >= math.MinInt32 && num <= math.MaxInt32:
-		buf = make([]byte, 4)
-		binary.BigEndian.PutUint32(buf, uint32(num))
-		return 32, buf
+	case num >= 0 && num < 12: // |1111xxxx| - (with xxxx between 0000 and 1101)
+		return 1, []byte{byte(0xf1 + num)}
+	case num >= math.MinInt8 && num <= math.MaxInt8: // |11111110| - 2 bytes
+		return 2, []byte{zipInt8b, byte(num)}
+	case num >= math.MinInt16 && num <= math.MaxInt16: // |11000000| - 3 bytes
+		buf = make([]byte, 3)
+		buf[0] = zipInt16b
+		binary.LittleEndian.PutUint16(buf[1:], uint16(num))
+		return 3, buf
+	case num >= math.MinInt32 && num <= math.MaxInt32: // |11010000| - 5 bytes
+		buf = make([]byte, 5)
+		buf[0] = zipInt32b
+		binary.LittleEndian.PutUint32(buf[1:], uint32(num))
+		return 5, buf
 	default:
 	}
 	return 0, buf
@@ -273,7 +261,7 @@ func (zl *ziplist) prevLen(offset int32) int32 {
 }
 
 func (zl *ziplist) Push(content []byte) {
-	offset := zl.zltail()
+	offset := zl.zlbytes() - 1
 	zl.insert(offset, content)
 	return
 }
@@ -286,10 +274,14 @@ func (zl *ziplist) PushLeft(content []byte) {
 
 func (zl *ziplist) insert(offset int32, content []byte) {
 	var prevlen, nextdiff int32
+	zlbytes := zl.zlbytes()
+	zllen := zl.zllen()
+	zltail := zl.zltail()
 
 	firstByte := ([]byte)(*zl)[offset]
 	if firstByte == ziplistEnd && zl.zllen() > 0 { // end
-		prevlen = zl.entryLen(zl.zltail())
+		prevlen = zl.entryLen(zltail)
+		zl.setZltail(offset)
 	}
 	// calculate the number of bytes required to insert the content
 	// 1. prevlen
@@ -301,22 +293,25 @@ func (zl *ziplist) insert(offset int32, content []byte) {
 
 	entry := zl.encodeEntry(prevlen, content)
 	entrysize := int32(len(entry))
-	curbytes := zl.zlbytes()
 	if firstByte != ziplistEnd && zl.zllen() > 0 { // header
 		if entrysize >= 254 {
 			nextdiff = 4
 		}
+		zl.setZltail(offset + entrysize)
 	}
-	zl.expand(offset, curbytes+entrysize+nextdiff)
+	zl.expand(offset, entrysize+nextdiff)
 	// store <prevlen><encoding><data> for content
 	zl.write(offset, entry)
 	// reset prevlen for next entry
 	if nextdiff > 0 {
-		zl.write(offset+entrysize, []byte{0xFE})
-		zl.write(offset+entrysize+1, encodePrevLen(entrysize))
+		zl.write(offset+entrysize, encodePrevLen(entrysize))
 	} else if firstByte != ziplistEnd && zl.zllen() == 0 {
 		zl.write(offset+entrysize, []byte{byte(entrysize)})
 	}
+	zlbytes += entrysize + nextdiff
+	zl.write(zlbytes-1, []byte{ziplistEnd})
+	zl.setZllen(zllen + 1)
+	zl.setZlbytes(zlbytes)
 	return
 }
 

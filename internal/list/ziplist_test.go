@@ -6,12 +6,16 @@ import (
 	"testing"
 )
 
-//func TestNewZiplist(t *testing.T) {
-//	zl := NewZiplist()
-//	t.Log(zl.zlbytes())
-//	t.Log(zl.zltail())
-//	t.Log(zl.zllen())
-//}
+func TestNewZiplist(t *testing.T) {
+	zl := NewZiplist()
+	zl.Push([]byte("1000"))
+	zl.Push([]byte("100000000"))
+	zl.Push([]byte(strings.Repeat("hello", 237) + "hel"))
+	zl.Push([]byte("1234567"))
+	content, ok := zl.Index(2)
+	t.Log(ok)
+	t.Log(string(content.([]byte)))
+}
 
 func TestBit(t *testing.T) {
 	var num int32
@@ -65,4 +69,31 @@ func TestZipStrEncoding(t *testing.T) {
 			t.Error("zipStrEncoding")
 		}
 	}
+}
+
+func TestPush(t *testing.T) {
+	zl := NewZiplist()
+	zl.Push([]byte("hello"))
+	zl.PushLeft([]byte("jim"))
+	zl.PushLeft([]byte(strings.Repeat("xxx", 3000) + "jij"))
+	zl.PushLeft([]byte("1234567"))
+	content, ok := zl.Index(1)
+	t.Log(ok)
+	t.Log(string(content.([]byte)))
+}
+
+func TestPop(t *testing.T) {
+	zl := NewZiplist()
+	zl.Push([]byte("hello"))
+	zl.Push([]byte("123456"))
+	zl.PushLeft([]byte(strings.Repeat("jim", 2345)))
+	zl.Pop()
+	t.Log(zl.zllen())
+	t.Log(zl.zlbytes())
+	content, ok := zl.Index(0)
+	if ok {
+		t.Log(string(content.([]byte)))
+		//t.Log(content)
+	}
+
 }
