@@ -1,6 +1,10 @@
 package list
 
-import "testing"
+import (
+	"slices"
+	"strings"
+	"testing"
+)
 
 //func TestNewZiplist(t *testing.T) {
 //	zl := NewZiplist()
@@ -14,4 +18,51 @@ func TestBit(t *testing.T) {
 	// 32 + 8 + 2
 	num = 0b00101010
 	t.Log(num & 0x3f)
+}
+
+func TestZipStrSize(t *testing.T) {
+	testcases := []struct {
+		_type       byte
+		encoding    []byte
+		lensizeWant int32
+		_lenWant    int32
+	}{
+		{zipStr06b, []byte{0b00111111}, 1, 63},
+		{zipStr06b, []byte{0b00000001}, 1, 1},
+		{zipStr14b, []byte{0b01000001, 0b00000001}, 2, 257},
+		{zipStr14b, []byte{0b01111111, 0b11111111}, 2, 16383},
+		{zipStr32b, []byte{0b10000000, 0b01111111, 0b11111111, 0b11111111, 0b11111111}, 5, 2147483647},
+	}
+
+	for _, tc := range testcases {
+		lensize, _len := zipStrSize(tc._type, tc.encoding)
+		if lensize != tc.lensizeWant || _len != tc._lenWant {
+			t.Log(_len)
+			t.Log(tc._lenWant)
+			t.Errorf("zipStrSize: lensize: %d want: %d _len: %d want: %d\n",
+				lensize, tc.lensizeWant, _len, tc._lenWant)
+		}
+	}
+}
+
+func TestZipStrEncoding(t *testing.T) {
+	testcases := []struct {
+		input            []byte
+		encodingsizeWant int32
+		encoding         []byte
+	}{
+		{[]byte("hello"), 1, []byte{0b00000101}},
+		{[]byte(strings.Repeat("hello", 12) + "hel"), 1, []byte{0b00111111}},
+		{[]byte(strings.Repeat("hello", 3276) + "hel"), 2, []byte{0b01111111, 0b11111111}},
+		{[]byte(strings.Repeat("hello", 3276) + "hell"), 5, []byte{0b10000000, 0b00000000, 0b00000000, 0b01000000, 0b00000000}},
+	}
+
+	for _, tc := range testcases {
+		encodingsize, encoding := zipStrEncoding(tc.input)
+		t.Logf("%b", encoding)
+		if encodingsize != tc.encodingsizeWant ||
+			slices.Compare(encoding, tc.encoding) != 0 {
+			t.Error("zipStrEncoding")
+		}
+	}
 }
