@@ -424,14 +424,46 @@ const (
 	ziplistTail = 1
 )
 
+func (zl *ziplist) PopLeft() {
+	zl.removeLeft(1)
+	return
+}
+
 func (zl *ziplist) Pop() {
 	zl.remove(1)
 	return
 }
 
-func (zl *ziplist) PopLeft() {
-	zl.remove(1)
-	return
+func (zl *ziplist) removeLeft(num int16) (int16, bool) {
+	var removednum int16
+	removednum = util.CondInt16(num > zl.zllen(), zl.zllen(), num)
+	if removednum == zl.zllen() {
+		zl = NewZiplist()
+		return removednum, true
+	}
+
+	var start, offset int32 = zl.zltail(), zl.zltail()
+
+	var i int16 = 0
+	for ; i < removednum; i++ {
+		offset += zl.entryLen(offset)
+	}
+	// 更新后一个元素的prevlen
+	pprevlen := zl.prevLen(start)
+	prevlen := zl.prevLen(offset)
+	nprevlen := zl.prevLen(offset)
+	if prevlen < 254 && pprevlen >= 254 {
+		offset -= 4
+	} else if prevlen >= 254 && pprevlen < 254 {
+		offset += 4
+	}
+	zl.write(offset, encodePrevLen(pprevlen))
+
+	zl.shrink(start, offset)
+	zl.addZlbytes(-(offset - start))
+	zl.addZltail(-(offset - start))
+	zl.addZllen(-removednum)
+	return removednum, false
 }
 
 func (zl *ziplist) remove(num int16) (int16, bool) {

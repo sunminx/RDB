@@ -192,7 +192,7 @@ func (l *quicklist) remove(where int8, num int64) int64 {
 		if where == quicklistHead {
 			node = l.head
 			neighborNode = node.next
-			hadRemovednum, all = node.zl.remove(removednum)
+			hadRemovednum, all = node.zl.removeLeft(removednum)
 			if all {
 				l.head = neighborNode
 				l._len--
