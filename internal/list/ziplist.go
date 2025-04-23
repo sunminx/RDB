@@ -425,33 +425,29 @@ const (
 )
 
 func (zl *ziplist) PopLeft() {
-	zl.removeLeft(1)
+	zl.removeHead(1)
 	return
 }
 
 func (zl *ziplist) Pop() {
-	zl.remove(1)
+	zl.removeTail(1)
 	return
 }
 
-func (zl *ziplist) removeLeft(num int16) (int16, bool) {
-	var removednum int16
-	removednum = util.CondInt16(num > zl.zllen(), zl.zllen(), num)
-	if removednum == zl.zllen() {
-		zl = NewZiplist()
-		return removednum, true
+func (zl *ziplist) removeHead(num int16) (int16, bool) {
+	removednum, all := zl.removeAll(num)
+	if all {
+		return removednum, all
 	}
 
-	var start, offset int32 = zl.zltail(), zl.zltail()
-
+	var start, offset int32 = zl.zlhead(), zl.zlhead()
 	var i int16 = 0
 	for ; i < removednum; i++ {
 		offset += zl.entryLen(offset)
 	}
-	// 更新后一个元素的prevlen
+
 	pprevlen := zl.prevLen(start)
 	prevlen := zl.prevLen(offset)
-	nprevlen := zl.prevLen(offset)
 	if prevlen < 254 && pprevlen >= 254 {
 		offset -= 4
 	} else if prevlen >= 254 && pprevlen < 254 {
@@ -466,41 +462,34 @@ func (zl *ziplist) removeLeft(num int16) (int16, bool) {
 	return removednum, false
 }
 
-func (zl *ziplist) remove(num int16) (int16, bool) {
-	var removednum int16
-	removednum = util.CondInt16(num > zl.zllen(), zl.zllen(), num)
-	if removednum == zl.zllen() {
-		zl = NewZiplist()
-		return removednum, true
+func (zl *ziplist) removeTail(num int16) (int16, bool) {
+	removednum, all := zl.removeAll(num)
+	if all {
+		return removednum, all
 	}
 
 	var start, offset int32 = zl.zltail(), zl.zltail()
-
 	var i int16 = 1
 	for ; i < removednum; i++ {
 		offset -= zl.prevLen(offset)
 	}
-	//// 更新后一个元素的prevlen
-	//prevoffset := start - zl.prevLen(start)
-	//prevlen := zl.entryLen(prevoffset)
-	//if !zl.isEnd(offset) {
-	//	nprevlen := zl.prevLen(offset)
-	//	if prevlen < 254 && nprevlen >= 254 {
-	//		offset += 4
-	//	} else if prevlen >= 254 && nprevlen < 254 {
-	//		offset -= 4
-	//	}
-	//	zl.write(offset, encodePrevLen(prevlen))
-	//} else {
-	//	zl.setZltail(prevoffset)
-	//}
 
+	prevlen := zl.prevLen(start)
 	start += zl.entryLen(start)
 	zl.shrink(offset, start)
 	zl.addZlbytes(-(start - offset))
-	zl.addZltail(-(start - offset))
+	zl.addZltail(-prevlen)
 	zl.addZllen(-removednum)
 	return removednum, false
+}
+
+func (zl *ziplist) removeAll(num int16) (int16, bool) {
+	num = util.CondInt16(num > zl.zllen(), zl.zllen(), num)
+	if num == zl.zllen() {
+		zl = NewZiplist()
+		return num, true
+	}
+	return num, false
 }
 
 func (zl *ziplist) isEnd(offset int32) bool {

@@ -1,6 +1,7 @@
 package list
 
 import (
+	"fmt"
 	"math"
 
 	"github.com/sunminx/RDB/pkg/util"
@@ -68,6 +69,7 @@ func (l *quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 	} else if where == quicklistTail {
 		node = l.tail
 		if node == nil || !node.insertAllowed(entrylen) {
+			fmt.Println(">>>>>>>>>>>>>>> new node")
 			node = newQuicklistNode()
 			if l.tail == nil {
 				l.tail = node
@@ -192,7 +194,7 @@ func (l *quicklist) remove(where int8, num int64) int64 {
 		if where == quicklistHead {
 			node = l.head
 			neighborNode = node.next
-			hadRemovednum, all = node.zl.removeLeft(removednum)
+			hadRemovednum, all = node.zl.removeHead(removednum)
 			if all {
 				l.head = neighborNode
 				l._len--
@@ -200,7 +202,7 @@ func (l *quicklist) remove(where int8, num int64) int64 {
 		} else if where == quicklistTail {
 			node = l.tail
 			neighborNode = node.prev
-			hadRemovednum, all = node.zl.remove(removednum)
+			hadRemovednum, all = node.zl.removeTail(removednum)
 			if all {
 				l.tail = neighborNode
 				l._len--
@@ -246,7 +248,7 @@ func (l *quicklist) unlinkTailNode() *quicklistNode {
 }
 
 func (l *quicklist) Index(idx int64) (any, bool) {
-	if idx > l.count {
+	if idx >= l.count {
 		return nil, false
 	}
 
@@ -282,6 +284,7 @@ func newQuicklistIterator(list *quicklist) *quicklistIterator {
 		list:     list,
 		node:     node,
 		nodeIter: newQuicklistNodeIterator(node),
+		count:    0,
 	}
 }
 
