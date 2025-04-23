@@ -1,30 +1,29 @@
 package db
 
 import (
-	"sync"
 	"time"
 
 	"github.com/sunminx/RDB/internal/dict"
 )
 
 type DB struct {
-	sync.RWMutex
-	dict    dicter
-	expires dicter
+	sdb    []*sdb
+	sdblen int
 }
 
-type dicter interface {
-	Add(string, dict.Robj) bool
-	Replace(string, dict.Robj) bool
-	Del(string) bool
-	FetchValue(string) (dict.Robj, bool)
-	GetRandomKey() dict.Entry
-	Used() int
-	Size() int
-}
+const dbcount = 16
 
 func New() *DB {
-	return &DB{sync.RWMutex{}, dict.NewMap(), dict.NewMap()}
+	sdb := make([]*sdb, dbcount, dbcount)
+	var i int
+	for ; i < dbcount; i++ {
+		sdb[i] = newSdb()
+	}
+	return &DB{sdb, i}
+}
+
+func (db *DB) lookupSdb(key string) *sdb {
+	return db.sdb[0]
 }
 
 func (db *DB) LookupKeyRead(key string) (dict.Robj, bool) {
@@ -37,9 +36,10 @@ func (db *DB) LookupKeyWrite(key string) (dict.Robj, bool) {
 }
 
 func (db *DB) lookupKey(key string) (dict.Robj, bool) {
-	db.RLock()
-	defer db.RUnlock()
-	val, ok := db.dict.FetchValue(key)
+	sdb := db.lookupSdb(key)
+	sdb.RLock()
+	defer sdb.RUnlock()
+	val, ok := sdb.dict.FetchValue(key)
 	if ok {
 		// todo
 		return val, true
@@ -51,13 +51,14 @@ func (db *DB) lookupKey(key string) (dict.Robj, bool) {
 var emptyRobj = dict.Robj{}
 
 func (db *DB) lookupKeyReadWithFlags(key string) (dict.Robj, bool) {
-	db.Lock()
-	defer db.Unlock()
+	sdb := db.lookupSdb(key)
+	sdb.Lock()
+	defer sdb.Unlock()
 
-	if db.expireIfNeeded(key) {
+	if sdb.expireIfNeeded(key) {
 		return emptyRobj, false
 	}
-	val, ok := db.dict.FetchValue(key)
+	val, ok := sdb.dict.FetchValue(key)
 	if ok {
 		// todo
 		return val, true
@@ -66,34 +67,38 @@ func (db *DB) lookupKeyReadWithFlags(key string) (dict.Robj, bool) {
 }
 
 func (db *DB) expireIfNeeded(key string) bool {
-	if !db.keyIsExpired(key) {
+	sdb := db.lookupSdb(key)
+	if !sdb.keyIsExpired(key) {
 		return false
 	}
-	return db.syncDel(key)
+	return sdb.syncDel(key)
 }
 
 func (db *DB) SetKey(key string, val dict.Robj) {
-	db.Lock()
-	defer db.Unlock()
+	sdb := db.lookupSdb(key)
+	sdb.Lock()
+	defer sdb.Unlock()
 	_ = val.TryObjectEncoding()
 
-	if _, ok := db.dict.FetchValue(key); ok {
-		db.dict.Replace(key, val)
+	if _, ok := sdb.dict.FetchValue(key); ok {
+		sdb.dict.Replace(key, val)
 	} else {
-		db.dict.Add(key, val)
+		sdb.dict.Add(key, val)
 	}
 }
 
 func (db *DB) SetExpire(key string, expire time.Duration) {
-	db.Lock()
-	defer db.Unlock()
-	db.expires.Replace(key, dict.NewRobj(int64(expire)))
+	sdb := db.lookupSdb(key)
+	sdb.Lock()
+	defer sdb.Unlock()
+	sdb.expires.Replace(key, dict.NewRobj(int64(expire)))
 }
 
 func (db *DB) DelKey(key string) {
-	db.Lock()
-	defer db.Unlock()
-	db.dict.Del(key)
+	sdb := db.lookupSdb(key)
+	sdb.Lock()
+	defer sdb.Unlock()
+	sdb.dict.Del(key)
 }
 
 const (
@@ -103,29 +108,32 @@ const (
 func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 	start := time.Now()
 	exit := false
-	for iteration := 0; !exit; iteration++ {
-		expired := 0
-		n := db.expires.Used()
-		if n > activeExpireCycleLookupsPerLoop {
-			n = activeExpireCycleLookupsPerLoop
-		}
-
-		for ; n > 0; n-- {
-			e := db.expires.GetRandomKey()
-			if db.activeExpireCycleTryExpire(e, time.Now()) {
-				expired += 1
+	for i := 0; i < db.sdblen; i++ {
+		sdb := db.sdb[i]
+		for iteration := 0; !exit; iteration++ {
+			expired := 0
+			n := sdb.expires.Used()
+			if n > activeExpireCycleLookupsPerLoop {
+				n = activeExpireCycleLookupsPerLoop
 			}
-		}
 
-		if iteration%16 == 0 {
-			elapsed := time.Now().Sub(start)
-			if elapsed > timelimit {
+			for ; n > 0; n-- {
+				e := sdb.expires.GetRandomKey()
+				if sdb.activeExpireCycleTryExpire(e, time.Now()) {
+					expired += 1
+				}
+			}
+
+			if iteration%16 == 0 {
+				elapsed := time.Now().Sub(start)
+				if elapsed > timelimit {
+					exit = true
+				}
+			}
+
+			if expired < activeExpireCycleLookupsPerLoop/4 {
 				exit = true
 			}
-		}
-
-		if expired < activeExpireCycleLookupsPerLoop/4 {
-			exit = true
 		}
 	}
 	return
@@ -136,13 +144,15 @@ func (db *DB) activeExpireCycleTryExpire(entry dict.Entry, now time.Time) bool {
 	expire := entry.TimeDurationVal()
 	// expired
 	if now.UnixMilli() > int64(expire) {
-		return db.syncDel(key)
+		sdb := db.lookupSdb(key)
+		return sdb.syncDel(key)
 	}
 	return false
 }
 
 func (db *DB) keyIsExpired(key string) bool {
-	v, ok := db.expires.FetchValue(key)
+	sdb := db.lookupSdb(key)
+	v, ok := sdb.expires.FetchValue(key)
 	if !ok {
 		return false
 	}
@@ -151,8 +161,9 @@ func (db *DB) keyIsExpired(key string) bool {
 }
 
 func (db *DB) syncDel(key string) bool {
-	if db.expires.Used() > 0 {
-		_ = db.expires.Del(key)
+	sdb := db.lookupSdb(key)
+	if sdb.expires.Used() > 0 {
+		_ = sdb.expires.Del(key)
 	}
-	return db.dict.Del(key)
+	return sdb.dict.Del(key)
 }
