@@ -82,7 +82,7 @@ func TestPush(t *testing.T) {
 	t.Log(string(content.([]byte)))
 }
 
-func TestPop(t *testing.T) {
+func TestZiplistPop(t *testing.T) {
 	zl := NewZiplist()
 	zl.Push([]byte("hello"))
 	zl.Push([]byte("123456"))

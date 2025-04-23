@@ -1,5 +1,11 @@
 package list
 
+import (
+	"math"
+
+	"github.com/sunminx/RDB/pkg/util"
+)
+
 type quicklist struct {
 	head  *quicklistNode
 	tail  *quicklistNode
@@ -7,54 +13,47 @@ type quicklist struct {
 	_len  int64 // number of quicklistNodes
 }
 
-type quicklistNode struct {
-	prev    *quicklistNode
-	next    *quicklistNode
-	zl      *ziplist
-	zlbytes int32 // ziplist size in bytes
-	count   int16 // count of items in ziplist
-}
-
-func NewQuicklist() quicklist {
-	return quicklist{
-		count: 0,
-		_len:  0,
-	}
-}
-
-func newQuicklistNode() *quicklistNode {
-	zl := NewZiplist()
-	return &quicklistNode{
-		zl:      zl,
-		zlbytes: zl.zlbytes(),
-		count:   zl.zllen(),
-	}
-}
-
-func (l *quicklist) PushLeft(entry []byte) {
-	return l.insert(entry, quicklistHead)
-}
-
-func (l *quicklist) Push(entry []byte) {
-	return l.insert(entry, quicklistTail)
+func NewQuicklist() *quicklist {
+	return &quicklist{}
 }
 
 const (
 	quicklistHead = 0
-	quicklistTail = 0
+	quicklistTail = 1
 )
 
-func (l *quicklist) insert(entry []byte, where int8) {
-	node := l.getNodeOrCreateIfNeeded(where)
-	inserted := node.insert(entry, where)
+func (l *quicklist) PushLeft(entry []byte) {
+	l.insert(entry, quicklistHead)
 	return
 }
 
-func (l *quicklist) getNodeOrCreateIfNeeded(where int8) *quicklistNode {
+func (l *quicklist) Push(entry []byte) {
+	l.insert(entry, quicklistTail)
+	return
+}
+
+func (l *quicklist) insert(entry []byte, where int8) {
+	node := l.getNodeOrCreateIfNeeded(int32(len(entry)), where)
+	node.insert(entry, where)
+	l.count++
+	return
+}
+
+func (l *quicklist) getNodeOrCreateIfNeeded(entrylen int32,
+	where int8) *quicklistNode {
+
 	var node *quicklistNode
+	if l._len == 0 {
+		node = newQuicklistNode()
+		l._len++
+		l.head = node
+		l.tail = node
+		return node
+	}
+
 	if where == quicklistHead {
 		node = l.head
-		if node == nil || !node.insertAllowed() {
+		if node == nil || !node.insertAllowed(entrylen) {
 			node = newQuicklistNode()
 			if l.head == nil {
 				l.head = node
@@ -68,72 +67,233 @@ func (l *quicklist) getNodeOrCreateIfNeeded(where int8) *quicklistNode {
 		}
 	} else if where == quicklistTail {
 		node = l.tail
-		if node == nil || !node.insertAllowed {
+		if node == nil || !node.insertAllowed(entrylen) {
 			node = newQuicklistNode()
 			if l.tail == nil {
 				l.tail = node
 			} else {
 				tail := l.tail
-				t.tail = node
+				l.tail = node
 				node.prev = tail
 				tail.next = node
 			}
 			l._len++
 		}
 	}
-	if l._len == 1 {
-		if l.head == nil {
-			l.head = l.tail
-		}
-		if l.tail == nil {
-			l.tail = l.head
-		}
+	return node
+}
+
+type quicklistNode struct {
+	prev    *quicklistNode
+	next    *quicklistNode
+	zl      *ziplist
+	zlbytes int32 // ziplist size in bytes
+	count   int16 // count of items in ziplist
+	fill    int16
+}
+
+func newQuicklistNode() *quicklistNode {
+	zl := NewZiplist()
+	return &quicklistNode{
+		zl:      zl,
+		zlbytes: zl.zlbytes(),
+		count:   zl.zllen(),
+		fill:    2,
 	}
-	return quicklistNode
 }
 
 func (n *quicklistNode) insert(entry []byte, where int8) {
 	if where == quicklistHead {
 		n.zl.PushLeft(entry)
-	} else if where == quickTail {
+	} else if where == quicklistTail {
 		n.zl.Push(entry)
 	}
 	n.zlbytes = n.zl.zlbytes()
-	n.zl = n.zl.zllen()
+	n.count = n.zl.zllen()
 	return
 }
 
-func (n *quicklistNode) insertAllowed() bool {
-	return true
+func (n *quicklistNode) insertAllowed(_len int32) bool {
+	elen := entryEncodeLen(_len)
+	nzlbytes := n.zlbytes + elen
+	return quicklistNodeMeetsOptimizationLevel(nzlbytes, n.fill)
 }
 
-func (n *quicklistNode) mergeAllowed() bool {
+func (n *quicklistNode) mergeNeeded(neighborNode *quicklistNode) bool {
+	if neighborNode == nil {
+		return false
+	}
 
+	mergeLen := n.zlbytes + neighborNode.zlbytes - 11
+	if quicklistNodeMeetsOptimizationLevel(mergeLen, n.fill) {
+		return true
+	} else if !quicklistNodeMeetsSafetyLimit(mergeLen) {
+		return false
+	} else if n.count+neighborNode.count < n.fill {
+		return true
+	} else {
+		return false
+	}
 }
 
-func (l *quicklist) Pop() {
+// var optimizationLevel = []int32{4096, 8192, 16384, 32768, 65536}
+var optimizationLevel = []int32{16, 64, 128, 512, 1024}
 
+func quicklistNodeMeetsOptimizationLevel(_len int32, fill int16) bool {
+	return _len < optimizationLevel[fill]
+}
+
+// const safetyLimit int32 = 8192
+const safetyLimit int32 = 64
+
+func quicklistNodeMeetsSafetyLimit(_len int32) bool {
+	return _len < safetyLimit
+}
+
+func (n *quicklistNode) insertEncoded(offset int32, encoded []byte,
+	_len int16, headprevlen, taillen int32) {
+	n.zl.insertEncoded(offset, encoded, _len, headprevlen, taillen)
+	return
+}
+
+func (n *quicklistNode) extractEncoded() (encoded []byte,
+	_len int16, headprevlen, taillen int32) {
+	return n.zl.extractEncoded()
+}
+
+func (n *quicklistNode) headOffset() int32 {
+	return n.zl.zlhead()
+}
+
+func (n *quicklistNode) endOffset() int32 {
+	return n.zl.zlbytes()
 }
 
 func (l *quicklist) PopLeft() {
-
+	l.remove(quicklistHead, 1)
+	return
 }
 
-func (l *quicklist) remove(num int32, where int8) int32 {
-	if l.count == 0 {
-		return
-	}
-	var node *quicklistNode
-	if where == quicklistHead {
-		node = l.head
-		node.zl.remove()
-	} else if where == quicklistTail {
-		node = l.tail
-		node.zl.remove()
-	}
-
-	if node.mergeAllowed() {
-
-	}
+func (l *quicklist) Pop() {
+	l.remove(quicklistTail, 1)
 	return
+}
+
+func (l *quicklist) remove(where int8, num int64) int64 {
+	if l.count == 0 {
+		return 0
+	}
+
+	var node, neighborNode *quicklistNode
+	var removednum, hadRemovednum int16
+	var all bool
+	for num > 0 {
+		removednum = int16(util.CondInt64(num > math.MaxInt16, math.MaxInt16, num))
+		if where == quicklistHead {
+			node = l.head
+			neighborNode = node.next
+			hadRemovednum, all = node.zl.remove(removednum)
+			if all {
+				l.head = neighborNode
+				l._len--
+			}
+		} else if where == quicklistTail {
+			node = l.tail
+			neighborNode = node.prev
+			hadRemovednum, all = node.zl.remove(removednum)
+			if all {
+				l.tail = neighborNode
+				l._len--
+			}
+		}
+		num -= int64(hadRemovednum)
+		l.count -= int64(hadRemovednum)
+		if neighborNode == nil {
+			break
+		}
+	}
+
+	if node.mergeNeeded(neighborNode) {
+		if where == quicklistHead {
+			node = l.unlinkHeadNode()
+			offset := node.headOffset()
+			encoded, _len, headprevlen, taillen := node.extractEncoded()
+			l.head.insertEncoded(offset, encoded, _len, headprevlen, taillen)
+		} else if where == quicklistTail {
+			node = l.unlinkTailNode()
+			offset := node.endOffset()
+			encoded, _len, headprevlen, taillen := node.extractEncoded()
+			l.tail.insertEncoded(offset, encoded, _len, headprevlen, taillen)
+		}
+	}
+	return 0
+}
+
+func (l *quicklist) unlinkHeadNode() *quicklistNode {
+	node := l.head
+	if node != nil {
+		l.head = node.next
+	}
+	return node
+}
+
+func (l *quicklist) unlinkTailNode() *quicklistNode {
+	node := l.tail
+	if node != nil {
+		l.tail = node.prev
+	}
+	return node
+}
+
+func (l *quicklist) Index(idx int64) (any, bool) {
+	if idx > l.count {
+		return nil, false
+	}
+
+	iter := newQuicklistIterator(l)
+	var entry any
+	for idx >= 0 && iter.hasNext() {
+		entry = iter.next()
+		idx--
+	}
+	return entry, true
+}
+
+type quicklistNodeIterator struct {
+	*ziplistIterator
+}
+
+func newQuicklistNodeIterator(node *quicklistNode) *quicklistNodeIterator {
+	return &quicklistNodeIterator{
+		ziplistIterator: newZiplistIterator(node.zl),
+	}
+}
+
+type quicklistIterator struct {
+	list     *quicklist
+	node     *quicklistNode
+	nodeIter *quicklistNodeIterator
+	count    int64
+}
+
+func newQuicklistIterator(list *quicklist) *quicklistIterator {
+	node := list.head
+	return &quicklistIterator{
+		list:     list,
+		node:     node,
+		nodeIter: newQuicklistNodeIterator(node),
+	}
+}
+
+func (iter *quicklistIterator) hasNext() bool {
+	return iter.count < iter.list.count
+}
+
+func (iter *quicklistIterator) next() any {
+	if !iter.nodeIter.hasNext() {
+		iter.node = iter.node.next
+		iter.nodeIter = newQuicklistNodeIterator(iter.node)
+	}
+	iter.count++
+	return iter.nodeIter.next()
 }
