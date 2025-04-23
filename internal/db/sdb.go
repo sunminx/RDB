@@ -27,15 +27,6 @@ func newSdb() *sdb {
 	return &sdb{sync.RWMutex{}, dict.NewMap(), dict.NewMap()}
 }
 
-func (sdb *sdb) LookupKeyRead(key string) (dict.Robj, bool) {
-	return sdb.lookupKeyReadWithFlags(key)
-}
-
-func (sdb *sdb) LookupKeyWrite(key string) (dict.Robj, bool) {
-	// todo
-	return sdb.lookupKey(key)
-}
-
 func (sdb *sdb) lookupKey(key string) (dict.Robj, bool) {
 	sdb.RLock()
 	defer sdb.RUnlock()
@@ -70,7 +61,9 @@ func (sdb *sdb) expireIfNeeded(key string) bool {
 	return sdb.syncDel(key)
 }
 
-func (sdb *sdb) SetKey(key string, val dict.Robj) {
+var emptyRobj = dict.Robj{}
+
+func (sdb *sdb) setKey(key string, val dict.Robj) {
 	sdb.Lock()
 	defer sdb.Unlock()
 	_ = val.TryObjectEncoding()
@@ -82,48 +75,21 @@ func (sdb *sdb) SetKey(key string, val dict.Robj) {
 	}
 }
 
-func (sdb *sdb) SetExpire(key string, expire time.Duration) {
+func (sdb *sdb) setExpire(key string, expire time.Duration) {
 	sdb.Lock()
 	defer sdb.Unlock()
 	sdb.expires.Replace(key, dict.NewRobj(int64(expire)))
 }
 
-func (sdb *sdb) DelKey(key string) {
+func (sdb *sdb) delKey(key string) {
 	sdb.Lock()
 	defer sdb.Unlock()
 	sdb.dict.Del(key)
 }
 
-func (sdb *sdb) ActiveExpireCycle(timelimit time.Duration) {
-	start := time.Now()
-	exit := false
-	for iteration := 0; !exit; iteration++ {
-		expired := 0
-		n := sdb.expires.Used()
-		if n > activeExpireCycleLookupsPerLoop {
-			n = activeExpireCycleLookupsPerLoop
-		}
-
-		for ; n > 0; n-- {
-			e := sdb.expires.GetRandomKey()
-			if sdb.activeExpireCycleTryExpire(e, time.Now()) {
-				expired += 1
-			}
-		}
-
-		if iteration%16 == 0 {
-			elapsed := time.Now().Sub(start)
-			if elapsed > timelimit {
-				exit = true
-			}
-		}
-
-		if expired < activeExpireCycleLookupsPerLoop/4 {
-			exit = true
-		}
-	}
-	return
-}
+const (
+	activeExpireCycleLookupsPerLoop = 20
+)
 
 func (sdb *sdb) activeExpireCycleTryExpire(entry dict.Entry, now time.Time) bool {
 	key := entry.Key()
