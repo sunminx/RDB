@@ -59,3 +59,21 @@ func TestQuicklistPop(t *testing.T) {
 		}
 	}
 }
+
+func TestQuicklistRemove(t *testing.T) {
+	list := NewQuicklist()
+	list.Push([]byte(strings.Repeat("aaaaa", 6)))
+	list.Push([]byte(strings.Repeat("bbbbb", 6)))
+	list.Push([]byte(strings.Repeat("ccccc", 6)))
+	list.Push([]byte("123456"))
+	list.Push([]byte(strings.Repeat("ddddd", 6)))
+	list.Push([]byte(strings.Repeat("eeeee", 6)))
+	list.Push([]byte(strings.Repeat("fffff", 6)))
+	t.Log(list.count)
+	t.Log(list._len)
+	list.remove(quicklistTail, 3, 3)
+	t.Log(list.count)
+	t.Log(list._len)
+	entry, _ := list.Index(1)
+	t.Log(string(entry))
+}

@@ -190,25 +190,37 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 
 	var node, neighborNode *quicklistNode
 	var removenum, skipenum, removednum, skipednum int16
-	var all bool
+	var pass bool
+	if where == quicklistHead {
+		node = l.head
+	} else if where == quicklistTail {
+		node = l.tail
+	}
 	for num > 0 {
 		removenum = int16(util.CondInt64(num > math.MaxInt16, math.MaxInt16, num))
 		skipenum = int16(util.CondInt64(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
 		if where == quicklistHead {
-			node = l.head
 			neighborNode = node.next
-			removednum, skipednum, all = node.zl.removeHead(removenum, skipenum)
-			if all {
-				l.head = neighborNode
-				l._len--
+			removednum, skipednum, pass = node.zl.removeHead(removenum, skipenum)
+			if pass {
+				if l.head.zl.zllen() == 0 {
+					l._len--
+					l.head = neighborNode
+					node = l.head
+				} else {
+					node = neighborNode
+				}
 			}
 		} else if where == quicklistTail {
-			node = l.tail
 			neighborNode = node.prev
-			removednum, skipednum, all = node.zl.removeTail(removenum, skipenum)
-			if all {
-				l.tail = neighborNode
-				l._len--
+			removednum, skipednum, pass = node.zl.removeTail(removenum, skipenum)
+			if pass {
+				if l.tail.zl.zllen() == 0 {
+					l._len--
+					l.tail = neighborNode
+				} else {
+					node = neighborNode
+				}
 			}
 		}
 		num -= int64(removednum)
