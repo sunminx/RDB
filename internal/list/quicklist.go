@@ -174,29 +174,30 @@ func (n *quicklistNode) endOffset() int32 {
 }
 
 func (l *quicklist) PopLeft() {
-	l.remove(quicklistHead, 1)
+	l.remove(quicklistHead, 1, 0)
 	return
 }
 
 func (l *quicklist) Pop() {
-	l.remove(quicklistTail, 1)
+	l.remove(quicklistTail, 1, 0)
 	return
 }
 
-func (l *quicklist) remove(where int8, num int64) int64 {
+func (l *quicklist) remove(where int8, num, skipnum int64) int64 {
 	if l.count == 0 {
 		return 0
 	}
 
 	var node, neighborNode *quicklistNode
-	var removednum, hadRemovednum int16
+	var removenum, skipenum, removednum, skipednum int16
 	var all bool
 	for num > 0 {
-		removednum = int16(util.CondInt64(num > math.MaxInt16, math.MaxInt16, num))
+		removenum = int16(util.CondInt64(num > math.MaxInt16, math.MaxInt16, num))
+		skipenum = int16(util.CondInt64(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
 		if where == quicklistHead {
 			node = l.head
 			neighborNode = node.next
-			hadRemovednum, all = node.zl.removeHead(removednum)
+			removednum, skipednum, all = node.zl.removeHead(removenum, skipenum)
 			if all {
 				l.head = neighborNode
 				l._len--
@@ -204,14 +205,15 @@ func (l *quicklist) remove(where int8, num int64) int64 {
 		} else if where == quicklistTail {
 			node = l.tail
 			neighborNode = node.prev
-			hadRemovednum, all = node.zl.removeTail(removednum)
+			removednum, skipednum, all = node.zl.removeTail(removenum, skipenum)
 			if all {
 				l.tail = neighborNode
 				l._len--
 			}
 		}
-		num -= int64(hadRemovednum)
-		l.count -= int64(hadRemovednum)
+		num -= int64(removednum)
+		skipnum -= int64(skipednum)
+		l.count -= int64(removednum)
 		if neighborNode == nil {
 			break
 		}
@@ -300,16 +302,11 @@ func (l *quicklist) Trim(start, end int64) {
 		end = l.count
 	}
 
-	var idx int64
-	for idx < start {
-
-	}
-
-	idx = end
-	for idx < l.count {
-
-	}
-
+	var removenum int64
+	removenum = start
+	l.remove(quicklistHead, start, 0)
+	removenum = l.count - end
+	l.remove(quicklistTail, removenum, 0)
 	return
 }
 

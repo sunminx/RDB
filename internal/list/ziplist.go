@@ -438,25 +438,38 @@ const (
 )
 
 func (zl *ziplist) PopLeft() {
-	zl.removeHead(1)
+	zl.removeHead(1, 0)
 	return
 }
 
 func (zl *ziplist) Pop() {
-	zl.removeTail(1)
+	zl.removeTail(1, 0)
 	return
 }
 
-func (zl *ziplist) removeHead(num int16) (int16, bool) {
-	removednum, all := zl.removeAll(num)
-	if all {
-		return removednum, all
+func (zl *ziplist) removeHead(num, skipnum int16) (int16, int16, bool) {
+	var removednum int16
+	if skipnum == 0 {
+		var all bool
+		removednum, all = zl.removeAll(num)
+		if all {
+			return removednum, 0, all
+		}
+	}
+	if skipnum >= zl.zllen() {
+		return 0, zl.zllen(), false
 	}
 
-	var start, offset int32 = zl.zlhead(), zl.zlhead()
-	var i int16 = 0
-	for ; i < removednum; i++ {
+	var start, offset int32
+	offset = zl.offsetHeadSkipN(skipnum)
+	start = offset
+	for num > 0 {
 		offset += zl.entryLen(offset)
+		if offset == zl.zltail() {
+			break
+		}
+		num--
+		removednum++
 	}
 
 	pprevlen := zl.prevLen(start)
@@ -472,28 +485,59 @@ func (zl *ziplist) removeHead(num int16) (int16, bool) {
 	zl.addZlbytes(-(offset - start))
 	zl.addZltail(-(offset - start))
 	zl.addZllen(-removednum)
-	return removednum, false
+	return removednum, skipnum, false
 }
 
-func (zl *ziplist) removeTail(num int16) (int16, bool) {
-	removednum, all := zl.removeAll(num)
-	if all {
-		return removednum, all
+func (zl *ziplist) offsetHeadSkipN(n int16) int32 {
+	offset := zl.zlhead()
+	for ; n > 0; n-- {
+		offset += zl.entryLen(offset)
+	}
+	return offset
+}
+
+func (zl *ziplist) removeTail(num, skipnum int16) (int16, int16, bool) {
+	var removednum int16
+	if skipnum == 0 {
+		var all bool
+		removednum, all = zl.removeAll(num)
+		if all {
+			return removednum, 0, all
+		}
+	}
+	if skipnum >= zl.zllen() {
+		return 0, zl.zllen(), false
 	}
 
-	var start, offset int32 = zl.zltail(), zl.zltail()
-	var i int16 = 1
-	for ; i < removednum; i++ {
-		offset -= zl.prevLen(offset)
+	var start, offset int32
+	offset = zl.offsetTailSkipN(skipnum)
+	start = offset
+	removednum = 1
+	for num > 1 {
+		prevlen := zl.prevLen(offset)
+		if prevlen == 0 {
+			break
+		}
+		offset -= prevlen
+		num--
+		removednum++
 	}
 
-	prevlen := zl.prevLen(start)
+	pprevlen := zl.prevLen(start)
 	start += zl.entryLen(start)
 	zl.shrink(offset, start)
 	zl.addZlbytes(-(start - offset))
-	zl.addZltail(-prevlen)
+	zl.addZltail(-pprevlen)
 	zl.addZllen(-removednum)
-	return removednum, false
+	return removednum, skipnum, false
+}
+
+func (zl *ziplist) offsetTailSkipN(n int16) int32 {
+	offset := zl.zltail()
+	for ; n > 0; n-- {
+		offset -= zl.prevLen(offset)
+	}
+	return offset
 }
 
 func (zl *ziplist) removeAll(num int16) (int16, bool) {
@@ -502,7 +546,7 @@ func (zl *ziplist) removeAll(num int16) (int16, bool) {
 		zl = NewZiplist()
 		return num, true
 	}
-	return num, false
+	return 0, false
 }
 
 func (zl *ziplist) isEnd(offset int32) bool {
