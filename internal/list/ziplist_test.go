@@ -14,7 +14,7 @@ func TestNewZiplist(t *testing.T) {
 	zl.Push([]byte("1234567"))
 	content, ok := zl.Index(2)
 	t.Log(ok)
-	t.Log(string(content.([]byte)))
+	t.Log(string(content))
 }
 
 func TestBit(t *testing.T) {
@@ -79,7 +79,7 @@ func TestPush(t *testing.T) {
 	zl.PushLeft([]byte("1234567"))
 	content, ok := zl.Index(1)
 	t.Log(ok)
-	t.Log(string(content.([]byte)))
+	t.Log(string(content))
 }
 
 func TestZiplistPop(t *testing.T) {
@@ -92,8 +92,16 @@ func TestZiplistPop(t *testing.T) {
 	t.Log(zl.zlbytes())
 	content, ok := zl.Index(1)
 	if ok {
-		t.Log(string(content.([]byte)))
+		t.Log(string(content))
 		//t.Log(content)
 	}
+}
 
+func TestZiplistWithInt(t *testing.T) {
+	zl := NewZiplist()
+	zl.Push([]byte("166"))
+	content, ok := zl.Index(0)
+	if ok {
+		t.Log(string(content))
+	}
 }

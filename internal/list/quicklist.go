@@ -1,7 +1,6 @@
 package list
 
 import (
-	"fmt"
 	"math"
 
 	"github.com/sunminx/RDB/pkg/util"
@@ -16,6 +15,10 @@ type quicklist struct {
 
 func NewQuicklist() *quicklist {
 	return &quicklist{}
+}
+
+func (l *quicklist) Len() int64 {
+	return l.count
 }
 
 const (
@@ -69,7 +72,6 @@ func (l *quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 	} else if where == quicklistTail {
 		node = l.tail
 		if node == nil || !node.insertAllowed(entrylen) {
-			fmt.Println(">>>>>>>>>>>>>>> new node")
 			node = newQuicklistNode()
 			if l.tail == nil {
 				l.tail = node
@@ -247,18 +249,68 @@ func (l *quicklist) unlinkTailNode() *quicklistNode {
 	return node
 }
 
-func (l *quicklist) Index(idx int64) (any, bool) {
+func (l *quicklist) Index(idx int64) ([]byte, bool) {
 	if idx >= l.count {
 		return nil, false
 	}
 
+	var entry []byte
 	iter := newQuicklistIterator(l)
-	var entry any
 	for idx >= 0 && iter.hasNext() {
 		entry = iter.next()
 		idx--
 	}
 	return entry, true
+}
+
+func (l *quicklist) Range(start, end int64) (entrys [][]byte) {
+	if start >= end {
+		return
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end > l.count {
+		end = l.count
+	}
+
+	var entry []byte
+	iter := newQuicklistIterator(l)
+	for iter.hasNext() {
+		entry = iter.next()
+		if start < iter.idx {
+			entrys = append(entrys, entry)
+		}
+		if end <= iter.idx {
+			break
+		}
+	}
+	return
+}
+
+// start end 保存
+func (l *quicklist) Trim(start, end int64) {
+	if start >= end {
+		return
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end > l.count {
+		end = l.count
+	}
+
+	var idx int64
+	for idx < start {
+
+	}
+
+	idx = end
+	for idx < l.count {
+
+	}
+
+	return
 }
 
 type quicklistNodeIterator struct {
@@ -275,7 +327,7 @@ type quicklistIterator struct {
 	list     *quicklist
 	node     *quicklistNode
 	nodeIter *quicklistNodeIterator
-	count    int64
+	idx      int64
 }
 
 func newQuicklistIterator(list *quicklist) *quicklistIterator {
@@ -284,19 +336,19 @@ func newQuicklistIterator(list *quicklist) *quicklistIterator {
 		list:     list,
 		node:     node,
 		nodeIter: newQuicklistNodeIterator(node),
-		count:    0,
+		idx:      0,
 	}
 }
 
 func (iter *quicklistIterator) hasNext() bool {
-	return iter.count < iter.list.count
+	return iter.idx < iter.list.count
 }
 
-func (iter *quicklistIterator) next() any {
+func (iter *quicklistIterator) next() []byte {
 	if !iter.nodeIter.hasNext() {
 		iter.node = iter.node.next
 		iter.nodeIter = newQuicklistNodeIterator(iter.node)
 	}
-	iter.count++
+	iter.idx++
 	return iter.nodeIter.next()
 }

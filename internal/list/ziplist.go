@@ -103,19 +103,29 @@ const (
 )
 
 // decodeEntry decode a entry locate by offset
-func (zl *ziplist) decodeEntry(offset int32) (entry any, entrysize int32) {
+func (zl *ziplist) decodeEntry(offset int32) (entry []byte, entrysize int32) {
 	prevlensize := zl.prevLenSize(offset)
 	_type, lensize, _len := zl.decodeEntryEncoding(offset + prevlensize)
 	conoffset := offset + prevlensize + lensize
 	if _type == strType {
 		entry = []byte(*zl)[conoffset : conoffset+_len]
 	} else {
-		if _len == 2 {
-			entry = int32(binary.LittleEndian.Uint16([]byte(*zl)[conoffset : conoffset+_len]))
+		if _len == 0 {
+			encoding := []byte(*zl)[offset+prevlensize : offset+prevlensize+1]
+			num := (encoding[0] & 0x0F) - 1
+			entry = []byte(strconv.FormatInt(int64(num), 10))
+		} else if _len == 1 {
+			num := []byte(*zl)[conoffset : conoffset+_len]
+			entry = []byte(strconv.FormatInt(int64(num[0]), 10))
+		} else if _len == 2 {
+			num := binary.LittleEndian.Uint16([]byte(*zl)[conoffset : conoffset+_len])
+			entry = []byte(strconv.FormatInt(int64(num), 10))
 		} else if _len == 4 {
-			entry = int32(binary.LittleEndian.Uint32([]byte(*zl)[conoffset : conoffset+_len]))
+			num := binary.LittleEndian.Uint32([]byte(*zl)[conoffset : conoffset+_len])
+			entry = []byte(strconv.FormatInt(int64(num), 10))
 		} else if _len == 8 {
-			entry = binary.LittleEndian.Uint64([]byte(*zl)[conoffset : conoffset+_len])
+			num := binary.LittleEndian.Uint64([]byte(*zl)[conoffset : conoffset+_len])
+			entry = []byte(strconv.FormatInt(int64(num), 10))
 		}
 	}
 	entrysize = prevlensize + lensize + _len
@@ -174,6 +184,9 @@ func zipIntSize(_type byte, _ []byte) (int32, int32) {
 	case zipInt64b:
 		return 1, 8
 	default:
+		if _type&0xf0 == 0xf0 {
+			return 1, 0
+		}
 	}
 	return 0, 0
 }
@@ -500,6 +513,20 @@ func (zl *ziplist) shrink(start, end int32) {
 	(*zl) = append((*zl)[:start], (*zl)[end:]...)
 }
 
+func (zl *ziplist) Index(idx int32) ([]byte, bool) {
+	var entry []byte
+	iter := newZiplistIterator(zl)
+	for idx >= 0 && iter.hasNext() {
+		entry = iter.next()
+		idx--
+	}
+
+	if idx >= 0 {
+		return nil, false
+	}
+	return entry, true
+}
+
 type ziplistIterator struct {
 	zl     *ziplist
 	offset int32
@@ -517,22 +544,8 @@ func (iter *ziplistIterator) hasNext() bool {
 	return !iter.zl.isEnd(iter.offset)
 }
 
-func (iter *ziplistIterator) next() any {
+func (iter *ziplistIterator) next() []byte {
 	entry, entrysize := iter.zl.decodeEntry(iter.offset)
 	iter.offset += entrysize
 	return entry
-}
-
-func (zl *ziplist) Index(idx int32) (any, bool) {
-	var entry any
-	iter := newZiplistIterator(zl)
-	for idx >= 0 && iter.hasNext() {
-		entry = iter.next()
-		idx--
-	}
-
-	if idx >= 0 {
-		return nil, false
-	}
-	return entry, true
 }
