@@ -473,7 +473,7 @@ func (zl *ziplist) removeHead(num, skipnum int16) (int16, int16, bool) {
 	}
 
 	// the prevlen of the subsequent elements is updated only
-	// when there are subsequent elements.
+	// when there are subsequent entry.
 	if !zl.isEnd(offset) {
 		pprevlen := zl.prevLen(start)
 		prevlen := zl.prevLen(offset)
