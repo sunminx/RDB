@@ -6,6 +6,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/sunminx/RDB/internal/list"
 	"github.com/sunminx/RDB/internal/sds"
 )
 
@@ -18,6 +19,7 @@ type RobjType int
 const (
 	UnknownType RobjType = iota
 	ObjString
+	ObjList
 )
 
 type EncodingType int
@@ -48,6 +50,8 @@ func NewRobj(obj any) Robj {
 		return Robj{ObjString, ObjEncodingRaw, sds.New(obj.([]byte))}
 	case int64, time.Duration:
 		return Robj{ObjString, ObjEncodingInt, obj}
+	case *list.Quicklist:
+		return Robj{ObjList, ObjEncodingRaw, obj}
 	default:
 	}
 	return Robj{UnknownType, UnknownEncodingType, nil}

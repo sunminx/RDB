@@ -56,4 +56,10 @@ var CommandTable []Command = []Command{
 	{"append", AppendCommand, 3, "wmF", 0, 1, 1, 1, 0, 0},
 	{"strlen", StrlenCommand, 2, "rF", 0, 1, 1, 1, 0, 0},
 	{"setex", SetexCommand, 4, "wmF", 0, 1, 1, 1, 0, 0},
+	{"rpush", RPushCommand, -3, "wmF", 0, 1, 1, 1, 0, 0},
+	{"lpush", LPushCommand, -3, "wmF", 0, 1, 1, 1, 0, 0},
+	{"rpop", RPopCommand, 2, "wF", 0, 1, 1, 1, 0, 0},
+	{"lpop", LPopCommand, 2, "wF", 0, 1, 1, 1, 0, 0},
+	{"llen", LLenCommand, 2, "rF", 0, 1, 1, 1, 0, 0},
+	{"lindex", LIndexCommand, 3, "r", 0, 1, 1, 1, 0, 0},
 }

@@ -6,18 +6,18 @@ import (
 	"github.com/sunminx/RDB/pkg/util"
 )
 
-type quicklist struct {
+type Quicklist struct {
 	head  *quicklistNode
 	tail  *quicklistNode
 	count int64 // total count of all entries in all ziplists
 	_len  int64 // number of quicklistNodes
 }
 
-func NewQuicklist() *quicklist {
-	return &quicklist{}
+func NewQuicklist() *Quicklist {
+	return &Quicklist{}
 }
 
-func (l *quicklist) Len() int64 {
+func (l *Quicklist) Len() int64 {
 	return l.count
 }
 
@@ -26,24 +26,24 @@ const (
 	quicklistTail = 1
 )
 
-func (l *quicklist) PushLeft(entry []byte) {
+func (l *Quicklist) PushLeft(entry []byte) {
 	l.insert(entry, quicklistHead)
 	return
 }
 
-func (l *quicklist) Push(entry []byte) {
+func (l *Quicklist) Push(entry []byte) {
 	l.insert(entry, quicklistTail)
 	return
 }
 
-func (l *quicklist) insert(entry []byte, where int8) {
+func (l *Quicklist) insert(entry []byte, where int8) {
 	node := l.getNodeOrCreateIfNeeded(int32(len(entry)), where)
 	node.insert(entry, where)
 	l.count++
 	return
 }
 
-func (l *quicklist) getNodeOrCreateIfNeeded(entrylen int32,
+func (l *Quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 	where int8) *quicklistNode {
 
 	var node *quicklistNode
@@ -173,17 +173,17 @@ func (n *quicklistNode) endOffset() int32 {
 	return n.zl.zlbytes()
 }
 
-func (l *quicklist) PopLeft() {
+func (l *Quicklist) PopLeft() {
 	l.remove(quicklistHead, 1, 0)
 	return
 }
 
-func (l *quicklist) Pop() {
+func (l *Quicklist) Pop() {
 	l.remove(quicklistTail, 1, 0)
 	return
 }
 
-func (l *quicklist) remove(where int8, num, skipnum int64) int64 {
+func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 	if l.count == 0 {
 		return 0
 	}
@@ -235,7 +235,7 @@ func (l *quicklist) remove(where int8, num, skipnum int64) int64 {
 	return 0
 }
 
-func (l *quicklist) unlinkHeadNode() *quicklistNode {
+func (l *Quicklist) unlinkHeadNode() *quicklistNode {
 	node := l.head
 	if node != nil {
 		l.head = node.next
@@ -243,7 +243,7 @@ func (l *quicklist) unlinkHeadNode() *quicklistNode {
 	return node
 }
 
-func (l *quicklist) unlinkTailNode() *quicklistNode {
+func (l *Quicklist) unlinkTailNode() *quicklistNode {
 	node := l.tail
 	if node != nil {
 		l.tail = node.prev
@@ -251,7 +251,7 @@ func (l *quicklist) unlinkTailNode() *quicklistNode {
 	return node
 }
 
-func (l *quicklist) Index(idx int64) ([]byte, bool) {
+func (l *Quicklist) Index(idx int64) ([]byte, bool) {
 	if idx >= l.count {
 		return nil, false
 	}
@@ -265,7 +265,7 @@ func (l *quicklist) Index(idx int64) ([]byte, bool) {
 	return entry, true
 }
 
-func (l *quicklist) Range(start, end int64) (entrys [][]byte) {
+func (l *Quicklist) Range(start, end int64) (entrys [][]byte) {
 	if start >= end {
 		return
 	}
@@ -291,7 +291,7 @@ func (l *quicklist) Range(start, end int64) (entrys [][]byte) {
 }
 
 // start end 保存
-func (l *quicklist) Trim(start, end int64) {
+func (l *Quicklist) Trim(start, end int64) {
 	if start >= end {
 		return
 	}
@@ -321,13 +321,13 @@ func newQuicklistNodeIterator(node *quicklistNode) *quicklistNodeIterator {
 }
 
 type quicklistIterator struct {
-	list     *quicklist
+	list     *Quicklist
 	node     *quicklistNode
 	nodeIter *quicklistNodeIterator
 	idx      int64
 }
 
-func newQuicklistIterator(list *quicklist) *quicklistIterator {
+func newQuicklistIterator(list *Quicklist) *quicklistIterator {
 	node := list.head
 	return &quicklistIterator{
 		list:     list,

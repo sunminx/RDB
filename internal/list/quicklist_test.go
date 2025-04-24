@@ -9,12 +9,9 @@ func TestQuicklistPush(t *testing.T) {
 	list := NewQuicklist()
 	list.Push([]byte("hello"))
 	list.Push([]byte("123456"))
-	entry, ok := list.head.zl.Index(1)
+	entry, ok := list.Index(0)
 	if ok {
-		//t.Log(string(entry.([]byte)))
 		t.Log(entry)
-	} else {
-		t.Log(ok)
 	}
 }
 
