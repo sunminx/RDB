@@ -472,14 +472,18 @@ func (zl *ziplist) removeHead(num, skipnum int16) (int16, int16, bool) {
 		removednum++
 	}
 
-	pprevlen := zl.prevLen(start)
-	prevlen := zl.prevLen(offset)
-	if prevlen < 254 && pprevlen >= 254 {
-		offset -= 4
-	} else if prevlen >= 254 && pprevlen < 254 {
-		offset += 4
+	// the prevlen of the subsequent elements is updated only
+	// when there are subsequent elements.
+	if !zl.isEnd(offset) {
+		pprevlen := zl.prevLen(start)
+		prevlen := zl.prevLen(offset)
+		if prevlen < 254 && pprevlen >= 254 {
+			offset -= 4
+		} else if prevlen >= 254 && pprevlen < 254 {
+			offset += 4
+		}
+		zl.write(offset, encodePrevLen(pprevlen))
 	}
-	zl.write(offset, encodePrevLen(pprevlen))
 
 	zl.shrink(start, offset)
 	zl.addZlbytes(-(offset - start))

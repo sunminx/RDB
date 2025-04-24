@@ -105,3 +105,15 @@ func TestZiplistWithInt(t *testing.T) {
 		t.Log(string(content))
 	}
 }
+
+func TestZiplistRemove(t *testing.T) {
+	zl := NewZiplist()
+	zl.Push([]byte("1"))
+	zl.Push([]byte("2"))
+	zl.Push([]byte("3"))
+	zl.Push([]byte("4"))
+	zl.Push([]byte("5"))
+	zl.removeTail(1, 2)
+	entry, _ := zl.Index(0)
+	t.Log(string(entry))
+}
