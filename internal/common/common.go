@@ -7,4 +7,5 @@ var Shared map[string][]byte = map[string][]byte{
 	"czero":        []byte(":0\r\n"),
 	"cone":         []byte(":1\r\n"),
 	"nullbulk":     []byte("$-1\r\n"),
+	"invalidindex": []byte("invalid index value"),
 }

@@ -316,7 +316,7 @@ func (l *Quicklist) Trim(start, end int64) {
 
 	var removenum int64
 	removenum = start
-	l.remove(quicklistHead, start, 0)
+	l.remove(quicklistHead, removenum, 0)
 	removenum = l.count - end
 	l.remove(quicklistTail, removenum, 0)
 	return

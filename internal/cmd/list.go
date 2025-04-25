@@ -102,7 +102,7 @@ func LIndexCommand(cli client) bool {
 
 	idx, err := strconv.ParseInt(argv[2].String(), 10, 64)
 	if err != nil {
-		cli.AddReplyError([]byte("invalid index value"))
+		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
 	ql := val.Val().(*list.Quicklist)
@@ -129,5 +129,34 @@ func LLenCommand(cli client) bool {
 	ql := val.Val().(*list.Quicklist)
 	llen := ql.Len()
 	cli.AddReplyInt64(llen)
+	return OK
+}
+
+func LTrimCommand(cli client) bool {
+	key := cli.Key()
+	val, exists := cli.LookupKeyRead(key)
+	if !exists {
+		cli.AddReplyRaw(common.Shared["nullbulk"])
+		return ERR
+	} else if !val.CheckType(dict.ObjList) {
+		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		return ERR
+	}
+	argv := cli.Argv()
+	var start, end int64
+	var err error
+	start, err = strconv.ParseInt(argv[2].String(), 10, 64)
+	if err != nil {
+		cli.AddReplyError(common.Shared["invalidindex"])
+		return ERR
+	}
+	end, err = strconv.ParseInt(argv[3].String(), 10, 64)
+	if err != nil {
+		cli.AddReplyError(common.Shared["invalidindex"])
+		return ERR
+	}
+	ql := val.Val().(*list.Quicklist)
+	ql.Trim(start, end)
+	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
