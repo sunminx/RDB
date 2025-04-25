@@ -26,6 +26,27 @@ const (
 	quicklistTail = 1
 )
 
+func (l *Quicklist) ReplaceAtIndex(index int64, entry []byte) {
+	if index < 0 {
+		index = 0
+	}
+	if index >= l.count {
+		index = l.count - 1
+	}
+
+	node := l.head
+	for {
+		var step int64 = util.CondInt64(index > math.MaxInt16, math.MaxInt16, index)
+		if int16(step) < node.count {
+			break
+		}
+		index -= step
+		node = node.next
+	}
+	node.zl.ReplaceAtIndex(int16(index), entry)
+	return
+}
+
 func (l *Quicklist) PushLeft(entry []byte) {
 	l.insert(entry, quicklistHead)
 	return

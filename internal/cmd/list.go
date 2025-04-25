@@ -160,3 +160,27 @@ func LTrimCommand(cli client) bool {
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
+
+func LSetCommand(cli client) bool {
+	key := cli.Key()
+	val, exists := cli.LookupKeyRead(key)
+	if !exists {
+		cli.AddReplyRaw(common.Shared["nullbulk"])
+		return ERR
+	} else if !val.CheckType(dict.ObjList) {
+		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		return ERR
+	}
+
+	argv := cli.Argv()
+	index, err := strconv.ParseInt(argv[2].String(), 10, 64)
+	if err != nil {
+		cli.AddReplyError(common.Shared["invalidindex"])
+		return ERR
+	}
+
+	ql := val.Val().(*list.Quicklist)
+	ql.ReplaceAtIndex(index-1, argv[3].Bytes())
+	cli.AddReplyStatus(common.Shared["ok"])
+	return OK
+}

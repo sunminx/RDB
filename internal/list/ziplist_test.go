@@ -117,3 +117,13 @@ func TestZiplistRemove(t *testing.T) {
 	entry, _ := zl.Index(0)
 	t.Log(string(entry))
 }
+
+func TestZiplistReplaceAtIndex(t *testing.T) {
+	zl := NewZiplist()
+	zl.Push([]byte("111111"))
+	entry, _ := zl.Index(0)
+	t.Log(string(entry))
+	zl.ReplaceAtIndex(0, []byte("2"))
+	entry, _ = zl.Index(0)
+	t.Log(string(entry))
+}

@@ -315,6 +315,27 @@ func (zl *ziplist) prevLen(offset int32) int32 {
 	return int32(binary.LittleEndian.Uint32([]byte(*zl)[offset+1 : offset+5]))
 }
 
+func (zl *ziplist) ReplaceAtIndex(index int16, entry []byte) {
+	if index < 0 {
+		index = 0
+	}
+	if index >= zl.zllen() {
+		index = zl.zllen() - 1
+	}
+	offset := zl.offsetHeadSkipN(index)
+	prevlen := zl.prevLen(offset)
+	encoded := zl.encodeEntry(prevlen, entry)
+	encodedlen := int32(len(encoded))
+	oldencodedlen := zl.entryLen(offset)
+	if encodedlen > oldencodedlen {
+		zl.expand(offset, encodedlen-oldencodedlen)
+	} else if encodedlen < oldencodedlen {
+		zl.shrink(offset+(encodedlen-oldencodedlen), offset)
+	}
+	zl.write(offset, encoded)
+	return
+}
+
 func (zl *ziplist) Push(entry []byte) {
 	offset := zl.zlbytes() - 1
 	zl.insert(offset, entry)
