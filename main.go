@@ -6,6 +6,7 @@ import (
 	"log/slog"
 
 	"github.com/panjf2000/gnet/v2"
+	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/conf"
 	"github.com/sunminx/RDB/internal/networking"
@@ -17,6 +18,7 @@ func main() {
 	flag.StringVar(&configfile, "conf", "rdb.conf", "--conf rdb.conf")
 
 	server := networking.NewServer()
+	server.SetCommandTable(cmd.CommandTable)
 	conf.Load(server, configfile)
 	//slog.SetLogLoggerLevel(common.ToSlogLevel(server.LogLevel))
 

@@ -21,6 +21,7 @@ type Server struct {
 	ProtoAddr     string
 	MaxFd         int
 	Clients       []*Client
+	cmds          []cmd.Command
 	Requirepass   bool
 	DB            *db.DB
 	CronLoops     int64
@@ -133,8 +134,12 @@ func initClients(n int) []*Client {
 	return clis
 }
 
-func LookupCommand(name string) (cmd.Command, bool) {
-	for _, command := range cmd.CommandTable {
+func (s *Server) SetCommandTable(cmds []cmd.Command) {
+	s.cmds = cmds
+}
+
+func (s *Server) LookupCommand(name string) (cmd.Command, bool) {
+	for _, command := range s.cmds {
 		if name == command.Name {
 			return command, true
 		}

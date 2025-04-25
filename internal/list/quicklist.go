@@ -302,7 +302,6 @@ func (l *Quicklist) Range(start, end int64) (entrys [][]byte) {
 	return
 }
 
-// start end 保存
 func (l *Quicklist) Trim(start, end int64) {
 	if start >= end {
 		return

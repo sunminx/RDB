@@ -295,7 +295,7 @@ func (c *Client) processCommand() {
 		c.flags |= ClientCloseASAP
 		return
 	}
-	cmd, ok := LookupCommand(name)
+	cmd, ok := c.srv.LookupCommand(name)
 	if !ok {
 		var args string
 		for i := 1; i < c.argc; i++ {
