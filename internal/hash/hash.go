@@ -16,23 +16,24 @@ func HashSet(robj *obj.Robj, key, val []byte) {
 	return
 }
 
-func HashGet(obj *robj.Robj, key, val []byte) {
+func HashGet(robj *obj.Robj, key []byte) []byte {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
 		return robj.Val().(*zipmap).get(key)
 	}
-	return
+	return nil
 }
 
-func HashDel(obj *robj.Robj, key []byte) {
+func HashDel(robj *obj.Robj, key []byte) {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
 		robj.Val().(*zipmap).del(key)
 	}
 	return
 }
 
-func Exists(obj *robj.Robj, key []byte) {
+func Exists(robj *obj.Robj, key []byte) bool {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		robj.Val().(*zipmap).exists(key)
+		idx, _ := robj.Val().(*zipmap).find(key)
+		return idx > 0
 	}
-	return
+	return false
 }
