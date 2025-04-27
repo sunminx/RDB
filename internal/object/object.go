@@ -23,6 +23,7 @@ const (
 	ObjEncodingInt
 	ObjEncodingRaw
 	ObjEncodingZiplist
+	ObjEncodingQuicklist
 )
 
 type Robj struct {

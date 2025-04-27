@@ -25,30 +25,27 @@ func pushGenericCommand(cli client, where int8) bool {
 	key := cli.Key()
 	argv := cli.Argv()
 
-	var ql *list.Quicklist
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
 		if !val.CheckType(obj.ObjList) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
 			return ERR
-		} else {
-			ql = val.Val().(*list.Quicklist)
 		}
 	} else {
-		ql = list.NewQuicklist()
+		val = obj.NewRobj(list.NewQuicklist())
 	}
 
 	var pushednum int64
 	for i := 2; i < len(argv); i++ {
 		if where == listHead {
-			ql.PushLeft(argv[i].Bytes())
+			list.PushLeft(&val, argv[i].Bytes())
 		} else if where == listTail {
-			ql.Push(argv[i].Bytes())
+			list.Push(&val, argv[i].Bytes())
 		}
 		pushednum++
 	}
 	if !exists {
-		cli.SetKey(key, obj.NewRobj(ql))
+		cli.SetKey(key, val)
 	}
 	cli.AddReplyInt64(pushednum)
 	return OK
@@ -74,12 +71,11 @@ func popGenericCommand(cli client, where int8) bool {
 		return ERR
 	}
 
-	ql := val.Val().(*list.Quicklist)
 	if where == listHead {
-		ql.PopLeft()
+		list.PopLeft(&val)
 		cli.AddReplyInt64(1)
 	} else if where == listTail {
-		ql.Pop()
+		list.Pop(&val)
 		cli.AddReplyInt64(1)
 	} else {
 		cli.AddReplyInt64(0)
@@ -105,8 +101,7 @@ func LIndexCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
-	ql := val.Val().(*list.Quicklist)
-	entry, ok := ql.Index(idx)
+	entry, ok := list.Index(&val, idx)
 	if !ok {
 		cli.AddReplyError([]byte("value is out of range"))
 		return ERR
@@ -126,8 +121,7 @@ func LLenCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
-	ql := val.Val().(*list.Quicklist)
-	llen := ql.Len()
+	llen := list.Len(&val)
 	cli.AddReplyInt64(llen)
 	return OK
 }
@@ -155,8 +149,7 @@ func LTrimCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
-	ql := val.Val().(*list.Quicklist)
-	ql.Trim(start, end)
+	list.Trim(&val, start, end)
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
@@ -179,8 +172,7 @@ func LSetCommand(cli client) bool {
 		return ERR
 	}
 
-	ql := val.Val().(*list.Quicklist)
-	ql.ReplaceAtIndex(index-1, argv[3].Bytes())
+	list.Set(&val, index-1, argv[3].Bytes())
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
