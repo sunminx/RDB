@@ -1,4 +1,4 @@
-package list
+package datastruct
 
 import (
 	"encoding/binary"
