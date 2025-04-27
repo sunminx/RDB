@@ -1,14 +1,31 @@
 package sds
 
-import obj "github.com/sunminx/RDB/internal/object"
+import (
+	"strconv"
+
+	"github.com/sunminx/RDB/internal/object"
+	obj "github.com/sunminx/RDB/internal/object"
+)
 
 type sds interface {
-	Append(*obj.Robj, sds.SDS)
+	Append(*obj.Robj, SDS)
 	Len(*obj.Robj) int64
 	Incr(*obj.Robj, int64)
 }
 
-func Append(robj *obj.Robj, s sds.SDS) {
+func NewRobj(val any) *obj.Robj {
+	robj := obj.NewRobj(val)
+	robj.SetType(obj.ObjString)
+	switch val.(type) {
+	case int64:
+		robj.SetEncoding(obj.ObjEncodingInt)
+	case string:
+		robj.SetEncoding(obj.ObjEncodingRaw)
+	}
+	return robj
+}
+
+func Append(robj *obj.Robj, s SDS) {
 	if robj.CheckEncoding(obj.ObjEncodingRaw) {
 		unwrap(robj).Cat(s)
 	}
@@ -27,9 +44,9 @@ func Len(robj *obj.Robj) int64 {
 
 func Incr(robj *obj.Robj, n int64) *obj.Robj {
 	if robj.CheckEncoding(obj.ObjEncodingInt) {
-		return obj.NewRobj(unwrapInt(robj) + n)
+		return NewRobj(unwrapInt(robj) + n)
 	}
-	return
+	return nil
 }
 
 func digit10(n int64) int64 {
@@ -72,10 +89,53 @@ func digit10(n int64) int64 {
 	return _len + 12 + digit10(n/1000000000000)
 }
 
-func unwrap(robj *obj.Robj) sds.SDS {
-	return robj.Val().(sds.SDS)
+func cond(c bool) int64 {
+	if c {
+		return 1
+	}
+	return 0
 }
 
-func unwrapInt(robj *obj.Robj) sds.SDS {
+func TryObjectEncoding(robj *obj.Robj) error {
+	if !robj.CheckType(object.ObjString) {
+		return nil
+	}
+	if !robj.SDSEncodedObject() {
+		return nil
+	}
+
+	var numval int64
+	var err error
+	val := unwrap(robj).String()
+	if len(val) <= 20 {
+		if numval, err = strconv.ParseInt(val, 10, 64); err == nil {
+			if robj.CheckEncoding(obj.ObjEncodingRaw) {
+				robj.SetVal(numval)
+				robj.SetEncoding(obj.ObjEncodingInt)
+			}
+		}
+	}
+
+	return nil
+}
+
+func Int64Val(robj *obj.Robj) (int64, bool) {
+	if !robj.CheckType(obj.ObjString) {
+		return 0, false
+	}
+	if robj.SDSEncodedObject() {
+		TryObjectEncoding(robj)
+	}
+	if robj.CheckEncoding(obj.ObjEncodingInt) {
+		return unwrapInt(robj), true
+	}
+	return 0, false
+}
+
+func unwrap(robj *obj.Robj) *SDS {
+	return robj.Val().(*SDS)
+}
+
+func unwrapInt(robj *obj.Robj) int64 {
 	return robj.Val().(int64)
 }

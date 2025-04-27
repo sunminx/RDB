@@ -32,15 +32,15 @@ func pushGenericCommand(cli client, where int8) bool {
 			return ERR
 		}
 	} else {
-		val = obj.NewRobj(list.NewQuicklist())
+		val = list.NewRobj(list.NewQuicklist())
 	}
 
 	var pushednum int64
 	for i := 2; i < len(argv); i++ {
 		if where == listHead {
-			list.PushLeft(&val, argv[i].Bytes())
+			list.PushLeft(val, argv[i])
 		} else if where == listTail {
-			list.Push(&val, argv[i].Bytes())
+			list.Push(val, argv[i])
 		}
 		pushednum++
 	}
@@ -72,10 +72,10 @@ func popGenericCommand(cli client, where int8) bool {
 	}
 
 	if where == listHead {
-		list.PopLeft(&val)
+		list.PopLeft(val)
 		cli.AddReplyInt64(1)
 	} else if where == listTail {
-		list.Pop(&val)
+		list.Pop(val)
 		cli.AddReplyInt64(1)
 	} else {
 		cli.AddReplyInt64(0)
@@ -96,17 +96,17 @@ func LIndexCommand(cli client) bool {
 		return ERR
 	}
 
-	idx, err := strconv.ParseInt(argv[2].String(), 10, 64)
+	idx, err := strconv.ParseInt(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
-	entry, ok := list.Index(&val, idx)
+	entry, ok := list.Index(val, idx)
 	if !ok {
 		cli.AddReplyError([]byte("value is out of range"))
 		return ERR
 	}
-	cli.AddReplyBulk(obj.NewRobj(entry))
+	cli.AddReplyBulk(list.NewRobj(entry))
 	return OK
 }
 
@@ -121,7 +121,7 @@ func LLenCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
-	llen := list.Len(&val)
+	llen := list.Len(val)
 	cli.AddReplyInt64(llen)
 	return OK
 }
@@ -139,17 +139,17 @@ func LTrimCommand(cli client) bool {
 	argv := cli.Argv()
 	var start, end int64
 	var err error
-	start, err = strconv.ParseInt(argv[2].String(), 10, 64)
+	start, err = strconv.ParseInt(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
-	end, err = strconv.ParseInt(argv[3].String(), 10, 64)
+	end, err = strconv.ParseInt(string(argv[3]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
-	list.Trim(&val, start, end)
+	list.Trim(val, start, end)
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
@@ -166,13 +166,13 @@ func LSetCommand(cli client) bool {
 	}
 
 	argv := cli.Argv()
-	index, err := strconv.ParseInt(argv[2].String(), 10, 64)
+	index, err := strconv.ParseInt(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
 
-	list.Set(&val, index-1, argv[3].Bytes())
+	list.Set(val, index-1, argv[3])
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }

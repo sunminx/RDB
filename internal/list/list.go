@@ -16,6 +16,13 @@ type list interface {
 	Trim(*obj.Robj, int64, int64)
 }
 
+func NewRobj(val any) *obj.Robj {
+	robj := obj.NewRobj(val)
+	robj.SetType(obj.ObjString)
+	robj.SetEncoding(obj.ObjEncodingQuicklist)
+	return robj
+}
+
 func Push(robj *obj.Robj, entry []byte) {
 	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
 		unwrap(robj).Push(entry)

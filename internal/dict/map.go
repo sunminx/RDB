@@ -9,18 +9,18 @@ import (
 )
 
 type MapDict struct {
-	dict map[string]obj.Robj
+	dict map[string]*obj.Robj
 }
 
 func NewMap() *MapDict {
 	return &MapDict{
-		dict: make(map[string]obj.Robj),
+		dict: make(map[string]*obj.Robj),
 	}
 }
 
 type Entry struct {
 	key string
-	val obj.Robj
+	val *obj.Robj
 }
 
 func (e *Entry) Key() string {
@@ -35,7 +35,7 @@ func (e *Entry) TimeDurationVal() time.Duration {
 	return time.Duration(t)
 }
 
-func (d *MapDict) Add(key string, val obj.Robj) bool {
+func (d *MapDict) Add(key string, val *obj.Robj) bool {
 	_, ok := d.dict[key]
 	if ok {
 		return false
@@ -44,7 +44,7 @@ func (d *MapDict) Add(key string, val obj.Robj) bool {
 	return true
 }
 
-func (d *MapDict) Replace(key string, val obj.Robj) bool {
+func (d *MapDict) Replace(key string, val *obj.Robj) bool {
 	d.dict[key] = val
 	return true
 }
@@ -58,7 +58,7 @@ func (d *MapDict) Del(key string) bool {
 	return true
 }
 
-func (d *MapDict) FetchValue(key string) (obj.Robj, bool) {
+func (d *MapDict) FetchValue(key string) (*obj.Robj, bool) {
 	val, ok := d.dict[key]
 	return val, ok
 }

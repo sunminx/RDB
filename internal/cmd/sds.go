@@ -47,20 +47,19 @@ func SetexCommand(cli client) bool {
 func AppendCommand(cli client) bool {
 	key := cli.Key()
 	argv := cli.Argv()
-	robj, ok := cli.LookupKeyRead(key)
+	val, ok := cli.LookupKeyRead(key)
 	if !ok {
 		_ = setGenericCommand(cli, key, argv[2], emptySDS)
 		return OK
 	}
-	if !robj.CheckType(obj.ObjString) {
+	if !val.CheckType(obj.ObjString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
 	sds.Append(val, argv[2])
-	robj.SetVal(val)
-	_ = setGenericCommand(cli, key, val, emptySDS)
+	_ = setGenericCommand(cli, key, val.Val().(sds.SDS), emptySDS)
 
-	cli.AddReplyBulk(robj)
+	cli.AddReplyBulk(val)
 	return OK
 }
 
@@ -76,7 +75,7 @@ func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 		}
 	}
 
-	cli.SetKey(key, obj.NewRobj(val))
+	cli.SetKey(key, sds.NewRobj(val))
 	if !expire.IsEmpty() {
 		now := time.Now().UnixMilli()
 		cli.SetExpire(key, time.Duration(now+milliseconds))
@@ -86,12 +85,12 @@ func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 
 func StrlenCommand(cli client) bool {
 	key := cli.Key()
-	robj, ok := cli.LookupKeyRead(key)
+	val, ok := cli.LookupKeyRead(key)
 	if !ok {
 		cli.AddReplyRaw(common.Shared["czero"])
 		return OK
 	}
-	if !robj.CheckType(obj.ObjString) {
+	if !val.CheckType(obj.ObjString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return OK
 	}
@@ -103,7 +102,7 @@ func DelCommand(cli client) bool {
 	var numdel int64
 	argv := cli.Argv()
 	for i := 1; i < len(argv); i++ {
-		cli.DelKey(argv[i].String())
+		cli.DelKey(string(argv[i]))
 		numdel += 1
 	}
 	cli.AddReplyInt64(numdel)
@@ -114,7 +113,7 @@ func ExistsCommand(cli client) bool {
 	var numexists int64
 	argv := cli.Argv()
 	for i := 1; i < len(argv); i++ {
-		if _, ok := cli.LookupKeyRead(argv[i].String()); ok {
+		if _, ok := cli.LookupKeyRead(string(argv[i])); ok {
 			numexists += 1
 		}
 	}
@@ -138,8 +137,7 @@ func incrdecrCommand(cli client, key string, n int64) bool {
 		return ERR
 	}
 
-	val := sds.Incr(val, n)
-	cli.SetKey(key, obj.NewRobj(num))
-	cli.AddReplyInt64(num)
+	sds.Incr(val, n)
+	cli.AddReplyInt64(n)
 	return OK
 }

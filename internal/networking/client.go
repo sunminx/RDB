@@ -52,7 +52,7 @@ type Client struct {
 	bulklen      int
 
 	argc int
-	argv []sds.SDS
+	argv [][]byte
 
 	reply []byte
 
@@ -70,7 +70,7 @@ func NewClient(conn gnet.Conn, db *db.DB) *Client {
 		bulklen:       -1,
 		reqtype:       protoReqNone,
 		argc:          0,
-		argv:          make([]sds.SDS, 0),
+		argv:          make([][]byte, 0),
 		reply:         make([]byte, 0),
 		authenticated: true,
 	}
@@ -94,11 +94,10 @@ func (c *Client) argvByIdx(n int) string {
 	if c.argc < n-1 {
 		return ""
 	}
-
-	return string(c.argv[n].Bytes())
+	return string(c.argv[n])
 }
 
-func (c *Client) Argv() []sds.SDS {
+func (c *Client) Argv() [][]byte {
 	return c.argv
 }
 
@@ -129,7 +128,7 @@ func (c *Client) processInputBuffer() {
 		}
 
 		if c.argc == 0 {
-			c.argv = make([]sds.SDS, 0)
+			c.argv = make([][]byte, 0)
 			c.multibulklen = 0
 			c.bulklen = -1
 			c.reqtype = protoReqNone
@@ -162,16 +161,16 @@ func (c *Client) processInlineBuffer() bool {
 	return true
 }
 
-func splitArgs(bytes []byte, sep byte) []sds.SDS {
-	res := make([]sds.SDS, 0)
+func splitArgs(bytes []byte, sep byte) [][]byte {
+	res := make([][]byte, 0)
 	i := 0
 	for j := 0; j < len(bytes); j++ {
 		if bytes[j] == sep {
-			res = append(res, sds.New(bytes[i:j]))
+			res = append(res, bytes[i:j])
 			i = j
 		}
 	}
-	res = append(res, sds.New(bytes[i:]))
+	res = append(res, bytes[i:])
 	return res
 }
 
@@ -220,7 +219,7 @@ func (c *Client) processMultibulkBuffer() bool {
 		}
 
 		c.multibulklen = ll
-		c.argv = make([]sds.SDS, ll)
+		c.argv = make([][]byte, ll)
 	}
 
 	for c.multibulklen > 0 {
@@ -299,7 +298,7 @@ func (c *Client) processCommand() {
 	if !ok {
 		var args string
 		for i := 1; i < c.argc; i++ {
-			args += fmt.Sprintf("%q, ", c.argv[i].String())
+			args += fmt.Sprintf("%q, ", string(c.argv[i]))
 			if len(args) >= 128 {
 				args = args[:128]
 				break
@@ -324,9 +323,9 @@ func (c *Client) call() {
 	_ = c.Cmd.Proc(c)
 }
 
-func (c *Client) AddReply(robj obj.Robj) {
+func (c *Client) AddReply(robj *obj.Robj) {
 	if robj.SDSEncodedObject() {
-		c.AddReplySds(robj.Val().(sds.SDS))
+		c.AddReplySds(robj.Val().(*sds.SDS))
 	} else {
 		num := robj.Val().(int64)
 		c.addReplyString(strconv.FormatInt(num, 10))
@@ -334,7 +333,7 @@ func (c *Client) AddReply(robj obj.Robj) {
 	return
 }
 
-func (c *Client) AddReplySds(s sds.SDS) {
+func (c *Client) AddReplySds(s *sds.SDS) {
 	c.reply = append(c.reply, s.Bytes()...)
 }
 
@@ -378,13 +377,21 @@ func (c *Client) addReplyInt64WithPrefix(n int64, prefix []byte) {
 	c.addReplyString(s)
 }
 
-func (c *Client) AddReplyBulk(robj obj.Robj) {
+func (c *Client) AddReplyMultibulk(robjs []*obj.Robj) {
+	c.addReplyString(fmt.Sprintf("*\r\n%d\r\n", len(robjs)))
+	for _, robj := range robjs {
+		c.AddReplyBulk(robj)
+	}
+	return
+}
+
+func (c *Client) AddReplyBulk(robj *obj.Robj) {
 	c.addReplyBulkLen(robj)
 	c.AddReply(robj)
 	c.AddReplyRaw(common.Shared["crlf"])
 }
 
-func (c *Client) addReplyBulkLen(robj obj.Robj) {
+func (c *Client) addReplyBulkLen(robj *obj.Robj) {
 	var slen string
 	if robj.SDSEncodedObject() {
 		s := robj.Val().(sds.SDS)
