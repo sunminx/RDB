@@ -12,9 +12,9 @@ func TestNewZiplist(t *testing.T) {
 	zl.Push([]byte("100000000"))
 	zl.Push([]byte(strings.Repeat("hello", 237) + "hel"))
 	zl.Push([]byte("1234567"))
-	content, ok := zl.Index(2)
+	entry, ok := zl.Index(2)
 	t.Log(ok)
-	t.Log(string(content))
+	t.Log(string(entry))
 }
 
 func TestBit(t *testing.T) {
@@ -77,9 +77,9 @@ func TestPush(t *testing.T) {
 	zl.PushLeft([]byte("jim"))
 	zl.PushLeft([]byte(strings.Repeat("xxx", 3000) + "jij"))
 	zl.PushLeft([]byte("1234567"))
-	content, ok := zl.Index(1)
+	entry, ok := zl.Index(1)
 	t.Log(ok)
-	t.Log(string(content))
+	t.Log(string(entry))
 }
 
 func TestZiplistPop(t *testing.T) {
@@ -88,21 +88,21 @@ func TestZiplistPop(t *testing.T) {
 	zl.Push([]byte("123456"))
 	zl.Push([]byte(strings.Repeat("jim", 2345)))
 	zl.PopLeft()
-	t.Log(zl.zllen())
-	t.Log(zl.zlbytes())
-	content, ok := zl.Index(1)
+	t.Log(zl.Zllen())
+	t.Log(zl.Zlbytes())
+	entry, ok := zl.Index(1)
 	if ok {
-		t.Log(string(content))
-		//t.Log(content)
+		t.Log(string(entry))
+		//t.Log(entry)
 	}
 }
 
 func TestZiplistWithInt(t *testing.T) {
 	zl := NewZiplist()
 	zl.Push([]byte("166"))
-	content, ok := zl.Index(0)
+	entry, ok := zl.Index(0)
 	if ok {
-		t.Log(string(content))
+		t.Log(string(entry))
 	}
 }
 
@@ -113,7 +113,7 @@ func TestZiplistRemove(t *testing.T) {
 	zl.Push([]byte("3"))
 	zl.Push([]byte("4"))
 	zl.Push([]byte("5"))
-	zl.removeTail(1, 2)
+	zl.RemoveTail(1, 2)
 	entry, _ := zl.Index(0)
 	t.Log(string(entry))
 }

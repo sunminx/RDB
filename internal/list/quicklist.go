@@ -3,6 +3,7 @@ package list
 import (
 	"math"
 
+	ds "github.com/sunminx/RDB/internal/datastruct"
 	"github.com/sunminx/RDB/pkg/util"
 )
 
@@ -111,18 +112,18 @@ func (l *Quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 type quicklistNode struct {
 	prev    *quicklistNode
 	next    *quicklistNode
-	zl      *ziplist
+	zl      *ds.Ziplist
 	zlbytes int32 // ziplist size in bytes
 	count   int16 // count of items in ziplist
 	fill    int16
 }
 
 func newQuicklistNode() *quicklistNode {
-	zl := NewZiplist()
+	zl := ds.NewZiplist()
 	return &quicklistNode{
 		zl:      zl,
-		zlbytes: zl.zlbytes(),
-		count:   zl.zllen(),
+		zlbytes: zl.Zlbytes(),
+		count:   zl.Zllen(),
 		fill:    2,
 	}
 }
@@ -133,13 +134,13 @@ func (n *quicklistNode) insert(entry []byte, where int8) {
 	} else if where == quicklistTail {
 		n.zl.Push(entry)
 	}
-	n.zlbytes = n.zl.zlbytes()
-	n.count = n.zl.zllen()
+	n.zlbytes = n.zl.Zlbytes()
+	n.count = n.zl.Zllen()
 	return
 }
 
 func (n *quicklistNode) insertAllowed(_len int32) bool {
-	elen := entryEncodeLen(_len)
+	elen := ds.ZiplistEntryEncodeLen(_len)
 	nzlbytes := n.zlbytes + elen
 	return quicklistNodeMeetsOptimizationLevel(nzlbytes, n.fill)
 }
@@ -177,21 +178,21 @@ func quicklistNodeMeetsSafetyLimit(_len int32) bool {
 
 func (n *quicklistNode) insertEncoded(offset int32, encoded []byte,
 	_len int16, headprevlen, taillen int32) {
-	n.zl.insertEncoded(offset, encoded, _len, headprevlen, taillen)
+	n.zl.InsertEncoded(offset, encoded, _len, headprevlen, taillen)
 	return
 }
 
 func (n *quicklistNode) extractEncoded() (encoded []byte,
 	_len int16, headprevlen, taillen int32) {
-	return n.zl.extractEncoded()
+	return n.zl.ExtractEncoded()
 }
 
 func (n *quicklistNode) headOffset() int32 {
-	return n.zl.zlhead()
+	return n.zl.Zlhead()
 }
 
 func (n *quicklistNode) endOffset() int32 {
-	return n.zl.zlbytes()
+	return n.zl.Zlbytes()
 }
 
 func (l *Quicklist) PopLeft() {
@@ -222,9 +223,9 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 		skipenum = int16(util.CondInt64(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
 		if where == quicklistHead {
 			neighborNode = node.next
-			removednum, skipednum, pass = node.zl.removeHead(removenum, skipenum)
+			removednum, skipednum, pass = node.zl.RemoveHead(removenum, skipenum)
 			if pass {
-				if l.head.zl.zllen() == 0 {
+				if l.head.zl.Zllen() == 0 {
 					l._len--
 					l.head = neighborNode
 					node = l.head
@@ -234,9 +235,9 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 			}
 		} else if where == quicklistTail {
 			neighborNode = node.prev
-			removednum, skipednum, pass = node.zl.removeTail(removenum, skipenum)
+			removednum, skipednum, pass = node.zl.RemoveTail(removenum, skipenum)
 			if pass {
-				if l.tail.zl.zllen() == 0 {
+				if l.tail.zl.Zllen() == 0 {
 					l._len--
 					l.tail = neighborNode
 				} else {
@@ -343,12 +344,12 @@ func (l *Quicklist) Trim(start, end int64) {
 }
 
 type quicklistNodeIterator struct {
-	*ziplistIterator
+	*ds.ZiplistIterator
 }
 
 func newQuicklistNodeIterator(node *quicklistNode) *quicklistNodeIterator {
 	return &quicklistNodeIterator{
-		ziplistIterator: newZiplistIterator(node.zl),
+		ZiplistIterator: ds.NewZiplistIterator(node.zl),
 	}
 }
 
@@ -374,10 +375,10 @@ func (iter *quicklistIterator) hasNext() bool {
 }
 
 func (iter *quicklistIterator) next() []byte {
-	if !iter.nodeIter.hasNext() {
+	if !iter.nodeIter.HasNext() {
 		iter.node = iter.node.next
 		iter.nodeIter = newQuicklistNodeIterator(iter.node)
 	}
 	iter.idx++
-	return iter.nodeIter.next()
+	return iter.nodeIter.Next()
 }
