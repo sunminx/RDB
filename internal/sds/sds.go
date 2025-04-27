@@ -1,121 +1,81 @@
 package sds
 
-import (
-	"slices"
-)
+import obj "github.com/sunminx/RDB/internal/object"
 
-type SDS []byte
-
-func New(bytes []byte) SDS {
-	return (SDS)(bytes)
+type sds interface {
+	Append(*obj.Robj, sds.SDS)
+	Len(*obj.Robj) int64
+	Incr(*obj.Robj, int64)
 }
 
-func NewEmpty() SDS {
-	var bytes = make([]byte, 0, 0)
-	return (SDS)(bytes)
-}
-
-func (s *SDS) Len() int {
-	return len(([]byte)(*s))
-}
-
-func (s *SDS) IsEmpty() bool {
-	return s.Len() == 0
-}
-
-func (s *SDS) Cap() int {
-	return cap(([]byte)(*s))
-}
-
-func (s *SDS) Bytes() []byte {
-	return ([]byte)(*s)
-}
-
-func (s *SDS) String() string {
-	return string(s.Bytes())
-}
-
-func (s *SDS) Dup() SDS {
-	bytes := make([]byte, s.Len(), s.Cap())
-	copy(bytes, ([]byte)(*s))
-	return New(bytes)
-}
-
-func (s *SDS) DupLine() SDS {
-	newline, ok := s.SplitNewLine()
-	if !ok {
-		return NewEmpty()
+func Append(robj *obj.Robj, s sds.SDS) {
+	if robj.CheckEncoding(obj.ObjEncodingRaw) {
+		unwrap(robj).Cat(s)
 	}
-	return New(newline)
+	return
 }
 
-func (s *SDS) Empty() {
-	if s.Len() == 0 {
-		return
+func Len(robj *obj.Robj) int64 {
+	if robj.CheckEncoding(obj.ObjEncodingRaw) {
+		return int64(unwrap(robj).Len())
 	}
-	(*s) = (*s)[:0]
-}
-
-func (s *SDS) Cat(t SDS) {
-	(*s) = append(*s, t...)
-}
-
-func (s *SDS) Cmp(t SDS) int {
-	return slices.Compare(([]byte)(*s), ([]byte)(t))
-}
-
-func Join(strs []string, sep string) SDS {
-	sdss := make([]SDS, 0, len(strs))
-	for i := 0; i < len(strs); i++ {
-		sdss = append(sdss, New([]byte(strs[i])))
+	if robj.CheckEncoding(obj.ObjEncodingInt) {
+		return digit10(unwrapInt(robj))
 	}
-	return JoinSDS(sdss, sep)
+	return 0
 }
 
-func JoinSDS(sdss []SDS, sep string) SDS {
-	s := NewEmpty()
-	if len(sdss) == 0 {
-		return s
+func Incr(robj *obj.Robj, n int64) *obj.Robj {
+	if robj.CheckEncoding(obj.ObjEncodingInt) {
+		return obj.NewRobj(unwrapInt(robj) + n)
+	}
+	return
+}
+
+func digit10(n int64) int64 {
+	var _len int64
+	if n < 0 {
+		_len = 1
+		n = -n
 	}
 
-	seps := New([]byte(sep))
-	for i := 0; i < len(sdss); i++ {
-		s.Cat(sdss[i])
-		if i != len(sdss)-1 {
-			s.Cat(seps)
+	if n < 10 {
+		return _len + 1
+	}
+	if n < 100 {
+		return _len + 2
+	}
+	if n < 1000 {
+		return _len + 3
+	}
+	// < 12
+	if n < 1000000000000 {
+		// 4-8
+		if n < 100000000 {
+			// 4-6
+			if n < 1000000 {
+				// 4 [1000, 9999]
+				if n < 10000 {
+					return _len + 4
+				}
+				// 5-6
+				return _len + 5 + cond(n >= 100000)
+			}
+			// 7-8
+			return _len + 7 + cond(n >= 10000000)
 		}
+		if n < 10000000000 {
+			return _len + 9 + cond(n >= 1000000000)
+		}
+		return _len + 11 + cond(n >= 100000000000)
 	}
-	return s
+	return _len + 12 + digit10(n/1000000000000)
 }
 
-func (s *SDS) Cpy(t string) {
-	if s.Len() > len(t) {
-		(*s) = (*s)[:len(t)]
-	}
-	copy(([]byte)(*s), []byte(t[:s.Len()]))
-	if s.Len() < len(t) {
-		(*s) = append((*s), []byte(t[s.Len():])...)
-	}
+func unwrap(robj *obj.Robj) sds.SDS {
+	return robj.Val().(sds.SDS)
 }
 
-func (s *SDS) Equal(t SDS) bool {
-	return slices.Equal(s.Bytes(), t.Bytes())
-}
-
-func (s *SDS) SplitNewLine() ([]byte, bool) {
-	idx := slices.Index(s.Bytes(), '\n')
-	if idx == -1 {
-		return nil, false
-	}
-	if ([]byte)(*s)[idx-1] == '\r' {
-		idx -= 1
-	}
-	newline := ([]byte)(*s)[:idx]
-	// skip '\r\n'
-	(*s) = (*s)[idx+2:]
-	return newline, true
-}
-
-func (s *SDS) FirstByte() byte {
-	return ([]byte)(*s)[0]
+func unwrapInt(robj *obj.Robj) sds.SDS {
+	return robj.Val().(int64)
 }

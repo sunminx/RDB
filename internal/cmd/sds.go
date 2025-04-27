@@ -56,27 +56,11 @@ func AppendCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
-	val := robj.Val().(sds.SDS)
-	val.Cat(argv[2])
+	sds.Append(val, argv[2])
 	robj.SetVal(val)
 	_ = setGenericCommand(cli, key, val, emptySDS)
 
 	cli.AddReplyBulk(robj)
-	return OK
-}
-
-func StrlenCommand(cli client) bool {
-	key := cli.Key()
-	robj, ok := cli.LookupKeyRead(key)
-	if !ok {
-		cli.AddReplyRaw(common.Shared["czero"])
-		return OK
-	}
-	if !robj.CheckType(obj.ObjString) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
-		return OK
-	}
-	cli.AddReplyInt64(robj.StringObjectLen())
 	return OK
 }
 
@@ -97,6 +81,21 @@ func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 		now := time.Now().UnixMilli()
 		cli.SetExpire(key, time.Duration(now+milliseconds))
 	}
+	return OK
+}
+
+func StrlenCommand(cli client) bool {
+	key := cli.Key()
+	robj, ok := cli.LookupKeyRead(key)
+	if !ok {
+		cli.AddReplyRaw(common.Shared["czero"])
+		return OK
+	}
+	if !robj.CheckType(obj.ObjString) {
+		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		return OK
+	}
+	cli.AddReplyInt64(sds.Len(val))
 	return OK
 }
 
@@ -139,13 +138,7 @@ func incrdecrCommand(cli client, key string, n int64) bool {
 		return ERR
 	}
 
-	num, ok := val.Int64Val()
-	if !ok {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
-		return ERR
-	}
-	num += n
-
+	val := sds.Incr(val, n)
 	cli.SetKey(key, obj.NewRobj(num))
 	cli.AddReplyInt64(num)
 	return OK
