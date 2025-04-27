@@ -3,7 +3,7 @@ package db
 import (
 	"time"
 
-	"github.com/sunminx/RDB/internal/dict"
+	obj "github.com/sunminx/RDB/internal/object"
 )
 
 type DB struct {
@@ -26,18 +26,18 @@ func (db *DB) lookupSdb(key string) *sdb {
 	return db.sdb[0]
 }
 
-func (db *DB) LookupKeyRead(key string) (dict.Robj, bool) {
+func (db *DB) LookupKeyRead(key string) (obj.Robj, bool) {
 	sdb := db.lookupSdb(key)
 	return sdb.lookupKeyReadWithFlags(key)
 }
 
-func (db *DB) LookupKeyWrite(key string) (dict.Robj, bool) {
+func (db *DB) LookupKeyWrite(key string) (obj.Robj, bool) {
 	// todo
 	sdb := db.lookupSdb(key)
 	return sdb.lookupKey(key)
 }
 
-func (db *DB) SetKey(key string, val dict.Robj) {
+func (db *DB) SetKey(key string, val obj.Robj) {
 	sdb := db.lookupSdb(key)
 	sdb.setKey(key, val)
 	return

@@ -9,7 +9,7 @@ import (
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/db"
-	"github.com/sunminx/RDB/internal/dict"
+	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
 )
 
@@ -324,11 +324,11 @@ func (c *Client) call() {
 	_ = c.Cmd.Proc(c)
 }
 
-func (c *Client) AddReply(obj dict.Robj) {
-	if obj.SDSEncodedObject() {
-		c.AddReplySds(obj.Val().(sds.SDS))
+func (c *Client) AddReply(robj obj.Robj) {
+	if robj.SDSEncodedObject() {
+		c.AddReplySds(robj.Val().(sds.SDS))
 	} else {
-		num := obj.Val().(int64)
+		num := robj.Val().(int64)
 		c.addReplyString(strconv.FormatInt(num, 10))
 	}
 	return
@@ -378,19 +378,19 @@ func (c *Client) addReplyInt64WithPrefix(n int64, prefix []byte) {
 	c.addReplyString(s)
 }
 
-func (c *Client) AddReplyBulk(obj dict.Robj) {
-	c.addReplyBulkLen(obj)
-	c.AddReply(obj)
+func (c *Client) AddReplyBulk(robj obj.Robj) {
+	c.addReplyBulkLen(robj)
+	c.AddReply(robj)
 	c.AddReplyRaw(common.Shared["crlf"])
 }
 
-func (c *Client) addReplyBulkLen(obj dict.Robj) {
+func (c *Client) addReplyBulkLen(robj obj.Robj) {
 	var slen string
-	if obj.SDSEncodedObject() {
-		s := obj.Val().(sds.SDS)
+	if robj.SDSEncodedObject() {
+		s := robj.Val().(sds.SDS)
 		slen = strconv.Itoa(s.Len())
 	} else {
-		n := obj.Val().(int64)
+		n := robj.Val().(int64)
 
 		_len := 1
 		if n < 0 {

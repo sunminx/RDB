@@ -3,7 +3,7 @@ package cmd
 import (
 	"time"
 
-	"github.com/sunminx/RDB/internal/dict"
+	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
 )
 
@@ -15,18 +15,18 @@ const (
 type client interface {
 	Key() string
 	Argv() []sds.SDS
-	LookupKeyRead(string) (dict.Robj, bool)
-	LookupKeyWrite(string) (dict.Robj, bool)
-	SetKey(string, dict.Robj)
+	LookupKeyRead(string) (obj.Robj, bool)
+	LookupKeyWrite(string) (obj.Robj, bool)
+	SetKey(string, obj.Robj)
 	SetExpire(string, time.Duration)
 	DelKey(string)
-	AddReply(dict.Robj)
+	AddReply(obj.Robj)
 	AddReplyRaw([]byte)
 	AddReplyStatus([]byte)
 	AddReplyError([]byte)
 	AddReplyErrorFormat(string, ...any)
 	AddReplyInt64(int64)
-	AddReplyBulk(dict.Robj)
+	AddReplyBulk(obj.Robj)
 }
 
 type CommandProc func(client) bool

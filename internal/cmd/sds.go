@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/sunminx/RDB/internal/common"
-	"github.com/sunminx/RDB/internal/dict"
+	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
 )
 
@@ -52,7 +52,7 @@ func AppendCommand(cli client) bool {
 		_ = setGenericCommand(cli, key, argv[2], emptySDS)
 		return OK
 	}
-	if !robj.CheckType(dict.ObjString) {
+	if !robj.CheckType(obj.ObjString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -72,7 +72,7 @@ func StrlenCommand(cli client) bool {
 		cli.AddReplyRaw(common.Shared["czero"])
 		return OK
 	}
-	if !robj.CheckType(dict.ObjString) {
+	if !robj.CheckType(obj.ObjString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return OK
 	}
@@ -92,7 +92,7 @@ func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 		}
 	}
 
-	cli.SetKey(key, dict.NewRobj(val))
+	cli.SetKey(key, obj.NewRobj(val))
 	if !expire.IsEmpty() {
 		now := time.Now().UnixMilli()
 		cli.SetExpire(key, time.Duration(now+milliseconds))
@@ -134,7 +134,7 @@ func DecrCommand(cli client) bool {
 
 func incrdecrCommand(cli client, key string, n int64) bool {
 	val, ok := cli.LookupKeyWrite(key)
-	if !ok || !val.CheckType(dict.ObjString) {
+	if !ok || !val.CheckType(obj.ObjString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -146,7 +146,7 @@ func incrdecrCommand(cli client, key string, n int64) bool {
 	}
 	num += n
 
-	cli.SetKey(key, dict.NewRobj(num))
+	cli.SetKey(key, obj.NewRobj(num))
 	cli.AddReplyInt64(num)
 	return OK
 }

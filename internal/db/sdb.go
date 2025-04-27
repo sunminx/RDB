@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/sunminx/RDB/internal/dict"
+	obj "github.com/sunminx/RDB/internal/object"
 )
 
 type sdb struct {
@@ -14,10 +15,10 @@ type sdb struct {
 }
 
 type dicter interface {
-	Add(string, dict.Robj) bool
-	Replace(string, dict.Robj) bool
+	Add(string, obj.Robj) bool
+	Replace(string, obj.Robj) bool
 	Del(string) bool
-	FetchValue(string) (dict.Robj, bool)
+	FetchValue(string) (obj.Robj, bool)
 	GetRandomKey() dict.Entry
 	Used() int
 	Size() int
@@ -27,7 +28,7 @@ func newSdb() *sdb {
 	return &sdb{sync.RWMutex{}, dict.NewMap(), dict.NewMap()}
 }
 
-func (sdb *sdb) lookupKey(key string) (dict.Robj, bool) {
+func (sdb *sdb) lookupKey(key string) (obj.Robj, bool) {
 	sdb.RLock()
 	defer sdb.RUnlock()
 	val, ok := sdb.dict.FetchValue(key)
@@ -36,10 +37,10 @@ func (sdb *sdb) lookupKey(key string) (dict.Robj, bool) {
 		return val, true
 	}
 
-	return dict.Robj{}, false
+	return obj.Robj{}, false
 }
 
-func (sdb *sdb) lookupKeyReadWithFlags(key string) (dict.Robj, bool) {
+func (sdb *sdb) lookupKeyReadWithFlags(key string) (obj.Robj, bool) {
 	sdb.Lock()
 	defer sdb.Unlock()
 
@@ -61,9 +62,9 @@ func (sdb *sdb) expireIfNeeded(key string) bool {
 	return sdb.syncDel(key)
 }
 
-var emptyRobj = dict.Robj{}
+var emptyRobj = obj.Robj{}
 
-func (sdb *sdb) setKey(key string, val dict.Robj) {
+func (sdb *sdb) setKey(key string, val obj.Robj) {
 	sdb.Lock()
 	defer sdb.Unlock()
 	_ = val.TryObjectEncoding()
@@ -78,7 +79,7 @@ func (sdb *sdb) setKey(key string, val dict.Robj) {
 func (sdb *sdb) setExpire(key string, expire time.Duration) {
 	sdb.Lock()
 	defer sdb.Unlock()
-	sdb.expires.Replace(key, dict.NewRobj(int64(expire)))
+	sdb.expires.Replace(key, obj.NewRobj(int64(expire)))
 }
 
 func (sdb *sdb) delKey(key string) {

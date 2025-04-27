@@ -103,7 +103,7 @@ const (
 )
 
 // decodeEntry decode a entry locate by offset
-func (zl *Ziplist) decodeEntry(offset int32) (entry []byte, entrysize int32) {
+func (zl *Ziplist) DecodeEntry(offset int32) (entry []byte, entrysize int32) {
 	prevlensize := zl.prevLenSize(offset)
 	_type, lensize, _len := zl.decodeEntryEncoding(offset + prevlensize)
 	conoffset := offset + prevlensize + lensize
@@ -191,7 +191,7 @@ func zipIntSize(_type byte, _ []byte) (int32, int32) {
 	return 0, 0
 }
 
-func (zl *Ziplist) encodeEntry(prevlen int32, content []byte) []byte {
+func (zl *Ziplist) EncodeEntry(prevlen int32, content []byte) []byte {
 	entry := make([]byte, 0)
 	entry = append(entry, encodePrevLen(prevlen)...)
 	_type, _, encoded := zl.encodeEntryEncoding(content)
@@ -287,7 +287,7 @@ func (zl *Ziplist) entryLen(offset int32) int32 {
 }
 
 func (zl *Ziplist) prevLenSize(offset int32) int32 {
-	return prevLenSize(zl.prevLen(offset))
+	return prevLenSize(zl.PrevLen(offset))
 }
 
 func prevLenSize(prevlen int32) int32 {
@@ -308,7 +308,7 @@ func encodePrevLen(size int32) []byte {
 	return buf
 }
 
-func (zl *Ziplist) prevLen(offset int32) int32 {
+func (zl *Ziplist) PrevLen(offset int32) int32 {
 	if []byte(*zl)[offset] != 0xFE {
 		return int32([]byte(*zl)[offset])
 	}
@@ -323,8 +323,8 @@ func (zl *Ziplist) ReplaceAtIndex(index int16, entry []byte) {
 		index = zl.Zllen() - 1
 	}
 	offset := zl.offsetHeadSkipN(index)
-	prevlen := zl.prevLen(offset)
-	encoded := zl.encodeEntry(prevlen, entry)
+	prevlen := zl.PrevLen(offset)
+	encoded := zl.EncodeEntry(prevlen, entry)
 	encodedlen := int32(len(encoded))
 	oldencodedlen := zl.entryLen(offset)
 	if encodedlen > oldencodedlen {
@@ -367,7 +367,7 @@ func (zl *Ziplist) insert(offset int32, content []byte) {
 	// does the insert cause changes in the prevlen of next entry
 	// +4 or not
 
-	entry := zl.encodeEntry(prevlen, content)
+	entry := zl.EncodeEntry(prevlen, content)
 	entrysize := int32(len(entry))
 	if firstByte != ZiplistEnd && zl.Zllen() > 0 { // header
 		if entrysize >= 254 {
@@ -395,7 +395,7 @@ func (zl *Ziplist) InsertEncoded(offset int32, encoded []byte,
 	_len int16, headprevlen, taillen int32) {
 
 	encodedlen := int32(len(encoded))
-	prevlen := zl.prevLen(offset)
+	prevlen := zl.PrevLen(offset)
 
 	var nextdiff int32
 	// 头部插入 更新原来第一个entry的prevlen
@@ -436,7 +436,7 @@ func (zl *Ziplist) ExtractEncoded() (encoded []byte, _len int16,
 
 	encoded = []byte(*zl)[head:end]
 	_len = zl.Zllen()
-	headprevlen = zl.prevLen(head)
+	headprevlen = zl.PrevLen(head)
 	taillen = zl.entryLen(tail)
 	return
 }
@@ -497,8 +497,8 @@ func (zl *Ziplist) RemoveHead(num, skipnum int16) (int16, int16, bool) {
 	// the prevlen of the subsequent elements is updated only
 	// when there are subsequent entry.
 	if !pass {
-		pprevlen := zl.prevLen(start)
-		prevlen := zl.prevLen(offset)
+		pprevlen := zl.PrevLen(start)
+		prevlen := zl.PrevLen(offset)
 		if prevlen < 254 && pprevlen >= 254 {
 			offset -= 4
 		} else if prevlen >= 254 && pprevlen < 254 {
@@ -540,7 +540,7 @@ func (zl *Ziplist) RemoveTail(num, skipnum int16) (int16, int16, bool) {
 	start = offset
 	removednum = 1
 	for num > 1 {
-		prevlen := zl.prevLen(offset)
+		prevlen := zl.PrevLen(offset)
 		if prevlen == 0 {
 			pass = true
 			break
@@ -550,7 +550,7 @@ func (zl *Ziplist) RemoveTail(num, skipnum int16) (int16, int16, bool) {
 		removednum++
 	}
 
-	pprevlen := zl.prevLen(start)
+	pprevlen := zl.PrevLen(start)
 	start += zl.entryLen(start)
 	zl.shrink(offset, start)
 	zl.AddZlbytes(-(start - offset))
@@ -562,7 +562,7 @@ func (zl *Ziplist) RemoveTail(num, skipnum int16) (int16, int16, bool) {
 func (zl *Ziplist) offsetTailSkipN(n int16) int32 {
 	offset := zl.Zltail()
 	for ; n > 0; n-- {
-		offset -= zl.prevLen(offset)
+		offset -= zl.PrevLen(offset)
 	}
 	return offset
 }
@@ -601,6 +601,7 @@ func (zl *Ziplist) Index(idx int32) ([]byte, bool) {
 type ZiplistIterator struct {
 	zl     *Ziplist
 	offset int32
+	idx    int16
 }
 
 func NewZiplistIterator(zl *Ziplist) *ZiplistIterator {
@@ -616,7 +617,16 @@ func (iter *ZiplistIterator) HasNext() bool {
 }
 
 func (iter *ZiplistIterator) Next() []byte {
-	entry, entrysize := iter.zl.decodeEntry(iter.offset)
+	entry, entrysize := iter.zl.DecodeEntry(iter.offset)
 	iter.offset += entrysize
+	iter.idx++
 	return entry
+}
+
+func (iter *ZiplistIterator) Offset() int32 {
+	return iter.offset
+}
+
+func (iter *ZiplistIterator) Index() int16 {
+	return iter.idx
 }

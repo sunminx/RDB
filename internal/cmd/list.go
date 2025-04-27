@@ -4,8 +4,8 @@ import (
 	"strconv"
 
 	"github.com/sunminx/RDB/internal/common"
-	"github.com/sunminx/RDB/internal/dict"
 	"github.com/sunminx/RDB/internal/list"
+	obj "github.com/sunminx/RDB/internal/object"
 )
 
 const (
@@ -28,7 +28,7 @@ func pushGenericCommand(cli client, where int8) bool {
 	var ql *list.Quicklist
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
-		if !val.CheckType(dict.ObjList) {
+		if !val.CheckType(obj.ObjList) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
 			return ERR
 		} else {
@@ -48,7 +48,7 @@ func pushGenericCommand(cli client, where int8) bool {
 		pushednum++
 	}
 	if !exists {
-		cli.SetKey(key, dict.NewRobj(ql))
+		cli.SetKey(key, obj.NewRobj(ql))
 	}
 	cli.AddReplyInt64(pushednum)
 	return OK
@@ -69,7 +69,7 @@ func popGenericCommand(cli client, where int8) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(dict.ObjList) {
+	} else if !val.CheckType(obj.ObjList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -95,7 +95,7 @@ func LIndexCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(dict.ObjList) {
+	} else if !val.CheckType(obj.ObjList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -111,7 +111,7 @@ func LIndexCommand(cli client) bool {
 		cli.AddReplyError([]byte("value is out of range"))
 		return ERR
 	}
-	cli.AddReplyBulk(dict.NewRobj(entry))
+	cli.AddReplyBulk(obj.NewRobj(entry))
 	return OK
 }
 
@@ -122,7 +122,7 @@ func LLenCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(dict.ObjList) {
+	} else if !val.CheckType(obj.ObjList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -138,7 +138,7 @@ func LTrimCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(dict.ObjList) {
+	} else if !val.CheckType(obj.ObjList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -167,7 +167,7 @@ func LSetCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(dict.ObjList) {
+	} else if !val.CheckType(obj.ObjList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
