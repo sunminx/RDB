@@ -1,39 +1,53 @@
-package list
+package hash
 
-import obj "github.com/sunminx/RDB/internal/object"
+import (
+	obj "github.com/sunminx/RDB/internal/object"
+	"github.com/sunminx/RDB/internal/sds"
+)
 
 type hash interface {
-	Set([]byte, []byte)
-	Get([]byte, []byte)
-	Del([]byte) bool
-	Exists([]byte) bool
+	Set(*obj.Robj, sds.SDS, sds.SDS)
+	Get(*obj.Robj, sds.SDS) ([]byte, bool)
+	Del(*obj.Robj, sds.SDS) bool
+	Exists(*obj.Robj, sds.SDS) bool
 }
 
-func HashSet(robj *obj.Robj, key, val []byte) {
+func NewRobj(val any) *obj.Robj {
+	robj := obj.NewRobj(val)
+	robj.SetType(obj.ObjHash)
+	robj.SetEncoding(obj.ObjEncodingZipmap)
+	return robj
+}
+
+func Set(robj *obj.Robj, field, val sds.SDS) {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		robj.Val().(*zipmap).set(key, val)
+		unwrap(robj).set(field.Bytes(), val.Bytes())
 	}
 	return
 }
 
-func HashGet(robj *obj.Robj, key []byte) []byte {
+func Get(robj *obj.Robj, field sds.SDS) ([]byte, bool) {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		return robj.Val().(*zipmap).get(key)
+		return unwrap(robj).get(field.Bytes()), true
 	}
-	return nil
+	return nil, false
 }
 
-func HashDel(robj *obj.Robj, key []byte) {
+func Del(robj *obj.Robj, field sds.SDS) {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		robj.Val().(*zipmap).del(key)
+		unwrap(robj).del(field.Bytes())
 	}
 	return
 }
 
-func Exists(robj *obj.Robj, key []byte) bool {
+func Exists(robj *obj.Robj, field sds.SDS) bool {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		idx, _ := robj.Val().(*zipmap).find(key)
+		idx, _ := unwrap(robj).find(field.Bytes())
 		return idx > 0
 	}
 	return false
+}
+
+func unwrap(robj *obj.Robj) *Zipmap {
+	return robj.Val().(*Zipmap)
 }

@@ -65,4 +65,6 @@ var CommandTable []Command = []Command{
 	{"lindex", LIndexCommand, 3, "r", 0, 1, 1, 1, 0, 0},
 	{"ltrim", LTrimCommand, 4, "w", 0, 1, 1, 1, 0, 0},
 	{"lset", LSetCommand, 4, "wm", 0, 1, 1, 1, 0, 0},
+	{"hset", HSetCommand, -4, "wmF", 0, 1, 1, 1, 0, 0},
+	{"hget", HGetCommand, 3, "rF", 0, 1, 1, 1, 0, 0},
 }

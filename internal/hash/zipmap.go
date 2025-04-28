@@ -1,4 +1,4 @@
-package list
+package hash
 
 import (
 	"slices"
@@ -6,11 +6,15 @@ import (
 	ds "github.com/sunminx/RDB/internal/datastruct"
 )
 
-type zipmap struct {
+type Zipmap struct {
 	*ds.Ziplist
 }
 
-func (zp *zipmap) set(key, val []byte) {
+func NewZipmap() *Zipmap {
+	return &Zipmap{ds.NewZiplist()}
+}
+
+func (zp *Zipmap) set(key, val []byte) {
 	var update bool
 	if zp.Zllen() > 0 {
 		idx, _ := zp.find(key)
@@ -27,7 +31,7 @@ func (zp *zipmap) set(key, val []byte) {
 	return
 }
 
-func (zp *zipmap) get(key []byte) (val []byte) {
+func (zp *Zipmap) get(key []byte) (val []byte) {
 	if zp.Zllen() == 0 {
 		return
 	}
@@ -39,7 +43,7 @@ func (zp *zipmap) get(key []byte) (val []byte) {
 	return
 }
 
-func (zp *zipmap) del(key []byte) {
+func (zp *Zipmap) del(key []byte) {
 	if zp.Zllen() == 0 {
 		return
 	}
@@ -48,7 +52,7 @@ func (zp *zipmap) del(key []byte) {
 	return
 }
 
-func (zp *zipmap) find(key []byte) (int16, int32) {
+func (zp *Zipmap) find(key []byte) (int16, int32) {
 	iter := ds.NewZiplistIterator(zp.Ziplist)
 
 	for iter.HasNext() {
