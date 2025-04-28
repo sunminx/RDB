@@ -73,6 +73,7 @@ func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 			cli.AddReplyErrorFormat(`invalid expire time in %s`, key)
 			return OK
 		}
+		milliseconds *= 1000
 	}
 
 	cli.SetKey(key, sds.NewRobj(val))
