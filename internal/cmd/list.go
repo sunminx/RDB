@@ -6,6 +6,7 @@ import (
 	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/list"
 	obj "github.com/sunminx/RDB/internal/object"
+	"github.com/sunminx/RDB/internal/sds"
 )
 
 const (
@@ -106,7 +107,7 @@ func LIndexCommand(cli client) bool {
 		cli.AddReplyError([]byte("value is out of range"))
 		return ERR
 	}
-	cli.AddReplyBulk(list.NewRobj(entry))
+	cli.AddReplyBulk(sds.NewRobj(sds.New(entry)))
 	return OK
 }
 

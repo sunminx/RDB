@@ -10,17 +10,17 @@ import (
 type sds interface {
 	Append(*obj.Robj, SDS)
 	Len(*obj.Robj) int64
-	Incr(*obj.Robj, int64)
+	Incr(*obj.Robj, int64) int64
 }
 
 func NewRobj(val any) *obj.Robj {
 	robj := obj.NewRobj(val)
 	robj.SetType(obj.ObjString)
 	switch val.(type) {
+	case SDS:
+		robj.SetEncoding(obj.ObjEncodingRaw)
 	case int64:
 		robj.SetEncoding(obj.ObjEncodingInt)
-	case string:
-		robj.SetEncoding(obj.ObjEncodingRaw)
 	}
 	return robj
 }
@@ -42,11 +42,14 @@ func Len(robj *obj.Robj) int64 {
 	return 0
 }
 
-func Incr(robj *obj.Robj, n int64) *obj.Robj {
+func Incr(robj *obj.Robj, n int64) int64 {
+	_ = TryObjectEncoding(robj)
 	if robj.CheckEncoding(obj.ObjEncodingInt) {
-		return NewRobj(unwrapInt(robj) + n)
+		n += unwrapInt(robj)
+		robj.SetVal(n)
+		return n
 	}
-	return nil
+	return 0
 }
 
 func digit10(n int64) int64 {
@@ -132,10 +135,15 @@ func Int64Val(robj *obj.Robj) (int64, bool) {
 	return 0, false
 }
 
+// unwrap unwrap robj to obtain SDS. before unwrapping, the encoding type should be checked first.
+// Unsafe
 func unwrap(robj *obj.Robj) *SDS {
-	return robj.Val().(*SDS)
+	sds := robj.Val().(SDS)
+	return &sds
 }
 
+// unwrap unwrap robj to obtain int64. before unwrapping, the encoding type should be checked first.
+// Unsafe
 func unwrapInt(robj *obj.Robj) int64 {
 	return robj.Val().(int64)
 }

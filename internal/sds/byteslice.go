@@ -7,12 +7,13 @@ import (
 type SDS []byte
 
 func New(bytes []byte) SDS {
-	return (SDS)(bytes)
+	sds := (SDS)(bytes)
+	return sds
 }
 
 func NewEmpty() SDS {
 	var bytes = make([]byte, 0, 0)
-	return (SDS)(bytes)
+	return New(bytes)
 }
 
 func (s *SDS) Len() int {

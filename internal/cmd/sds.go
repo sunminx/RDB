@@ -68,7 +68,7 @@ func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 
 	if !expire.IsEmpty() {
 		var err error
-		milliseconds, err = strconv.ParseInt(expire.String(), 10, 64)
+		milliseconds, err = strconv.ParseInt(string(expire), 10, 64)
 		if err != nil {
 			cli.AddReplyErrorFormat(`invalid expire time in %s`, key)
 			return OK
@@ -76,7 +76,7 @@ func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
 	}
 
 	cli.SetKey(key, sds.NewRobj(val))
-	if !expire.IsEmpty() {
+	if milliseconds > 0 {
 		now := time.Now().UnixMilli()
 		cli.SetExpire(key, time.Duration(now+milliseconds))
 	}
@@ -136,8 +136,6 @@ func incrdecrCommand(cli client, key string, n int64) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
-
-	sds.Incr(val, n)
-	cli.AddReplyInt64(n)
+	cli.AddReplyInt64(sds.Incr(val, n))
 	return OK
 }

@@ -18,7 +18,7 @@ type list interface {
 
 func NewRobj(val any) *obj.Robj {
 	robj := obj.NewRobj(val)
-	robj.SetType(obj.ObjString)
+	robj.SetType(obj.ObjList)
 	robj.SetEncoding(obj.ObjEncodingQuicklist)
 	return robj
 }
