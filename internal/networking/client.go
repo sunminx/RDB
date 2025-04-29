@@ -15,27 +15,26 @@ import (
 )
 
 // Client flags
-type ClientFlag int
+type flag int
 
 const (
-	ClientSave ClientFlag = 1 << iota
-	ClientMaster
-	ClientMonitor
-	ClientMulti
-	ClientBlocked
-	ClientDirtyCas
-	ClientCloseAfterReply
-	ClientCloseASAP
-
-	ClientNone = 0
+	Save flag = 1 << iota
+	master
+	monitor
+	multi
+	blocked
+	dirtyCas
+	closeAfterReply
+	closeASAP
+	none = 0
 )
 
 type reqType int
 
 const (
-	protoReqNone reqType = iota
-	protoReqMultibulk
-	protoReqInline
+	reqNone reqType = iota
+	reqMultibulk
+	reqInline
 )
 
 type Client struct {
@@ -43,7 +42,7 @@ type Client struct {
 	*db.DB
 	fd              int
 	srv             *Server
-	flags           ClientFlag
+	flag            flag
 	authenticated   bool
 	querybuf        []byte
 	reqtype         reqType
@@ -52,8 +51,8 @@ type Client struct {
 	argc            int
 	argv            [][]byte
 	reply           []byte
-	Cmd             cmd.Command
-	LastInteraction int64
+	cmd             cmd.Command
+	lastInteraction int64
 }
 
 func NewClient(conn gnet.Conn, db *db.DB) *Client {
@@ -64,7 +63,7 @@ func NewClient(conn gnet.Conn, db *db.DB) *Client {
 		querybuf:      make([]byte, 0),
 		multibulklen:  0,
 		bulklen:       -1,
-		reqtype:       protoReqNone,
+		reqtype:       reqNone,
 		argc:          0,
 		argv:          make([][]byte, 0),
 		reply:         make([]byte, 0),
@@ -99,19 +98,19 @@ var (
 
 func (c *Client) processInputBuffer() {
 	for len(c.querybuf) > 0 {
-		if c.reqtype == protoReqNone {
+		if c.reqtype == reqNone {
 			if c.querybuf[0] == '*' {
-				c.reqtype = protoReqMultibulk
+				c.reqtype = reqMultibulk
 			} else {
-				c.reqtype = protoReqInline
+				c.reqtype = reqInline
 			}
 		}
 
-		if c.reqtype == protoReqInline {
+		if c.reqtype == reqInline {
 			if !c.processInlineBuffer() {
 				break
 			}
-		} else if c.reqtype == protoReqMultibulk {
+		} else if c.reqtype == reqMultibulk {
 			if !c.processMultibulkBuffer() {
 				break
 			}
@@ -123,7 +122,7 @@ func (c *Client) processInputBuffer() {
 			c.argv = make([][]byte, 0)
 			c.multibulklen = 0
 			c.bulklen = -1
-			c.reqtype = protoReqNone
+			c.reqtype = reqNone
 		} else {
 			c.processCommand()
 		}
@@ -291,14 +290,14 @@ func splitArgs(bytes []byte, sep byte) [][]byte {
 }
 
 func (c *Client) setProtocolError() {
-	c.flags |= ClientCloseAfterReply
+	c.flag |= closeAfterReply
 }
 
 func (c *Client) processCommand() {
 	name := c.argvByIdx(0)
 	name = strings.ToLower(name)
 	if name == "quit" {
-		c.flags |= ClientCloseASAP
+		c.flag |= closeASAP
 		return
 	}
 	cmd, ok := c.srv.LookupCommand(name)
@@ -319,7 +318,7 @@ func (c *Client) processCommand() {
 		goto clean
 	}
 
-	c.Cmd = cmd
+	c.cmd = cmd
 	c.call()
 clean:
 	c.argc = 0
@@ -327,7 +326,7 @@ clean:
 }
 
 func (c *Client) call() {
-	_ = c.Cmd.Proc(c)
+	_ = c.cmd.Proc(c)
 }
 
 func (c *Client) AddReply(robj *obj.Robj) {
@@ -425,7 +424,7 @@ func (c *Client) addReplyString(s string) {
 }
 
 func (c *Client) handleTimeout(now int64) bool {
-	timeouted := c.srv.MaxIdleTime > 0 && (now-c.LastInteraction) > c.srv.MaxIdleTime
+	timeouted := c.srv.MaxIdleTime > 0 && (now-c.lastInteraction) > c.srv.MaxIdleTime
 	if timeouted {
 		c.free()
 		c.srv.delClient(c.fd)

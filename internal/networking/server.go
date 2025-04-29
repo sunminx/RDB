@@ -41,7 +41,7 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 
 	cli := NewClient(conn, s.DB)
 	cli.srv = s
-	cli.LastInteraction = time.Now().UnixMilli()
+	cli.lastInteraction = time.Now().UnixMilli()
 	s.Clients[fd] = cli
 	return nil, gnet.None
 }
@@ -78,7 +78,7 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 	if cli == nil || cli.fd == -1 {
 		return gnet.Close
 	}
-	cli.LastInteraction = time.Now().UnixMilli()
+	cli.lastInteraction = time.Now().UnixMilli()
 
 	buf, err := conn.Next(-1)
 	if err != nil {
@@ -88,7 +88,7 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 	cli.querybuf = append(cli.querybuf, buf...)
 	cli.processInputBuffer()
 
-	if (cli.flags & ClientCloseASAP) != 0 {
+	if (cli.flag & closeASAP) != 0 {
 		return gnet.Close
 	}
 
@@ -97,7 +97,7 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 		cli.reply = make([]byte, 0)
 	}
 
-	if (cli.flags & ClientCloseAfterReply) != 0 {
+	if (cli.flag & closeAfterReply) != 0 {
 		return gnet.Close
 	}
 	return gnet.None
