@@ -4,29 +4,28 @@ import (
 	"sync"
 	"time"
 
-	"github.com/sunminx/RDB/internal/dict"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
 )
 
 type sdb struct {
 	sync.RWMutex
-	dict    dicter
-	expires dicter
+	dict    dictable
+	expires dictable
 }
 
-type dicter interface {
+type dictable interface {
 	Add(string, *obj.Robj) bool
 	Replace(string, *obj.Robj) bool
 	Del(string) bool
 	FetchValue(string) (*obj.Robj, bool)
-	GetRandomKey() dict.Entry
+	GetRandomKey() Entry
 	Used() int
 	Size() int
 }
 
 func newSdb() *sdb {
-	return &sdb{sync.RWMutex{}, dict.NewMap(), dict.NewMap()}
+	return &sdb{sync.RWMutex{}, NewMap(), NewMap()}
 }
 
 func (sdb *sdb) lookupKey(key string) (*obj.Robj, bool) {
@@ -93,7 +92,7 @@ const (
 	activeExpireCycleLookupsPerLoop = 20
 )
 
-func (sdb *sdb) activeExpireCycleTryExpire(entry dict.Entry, now time.Time) bool {
+func (sdb *sdb) activeExpireCycleTryExpire(entry Entry, now time.Time) bool {
 	key := entry.Key()
 	expire := entry.TimeDurationVal()
 	// expired

@@ -1,4 +1,4 @@
-package dict
+package db
 
 import (
 	"crypto/rand"
