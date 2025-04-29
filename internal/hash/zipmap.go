@@ -14,53 +14,60 @@ func NewZipmap() *Zipmap {
 	return &Zipmap{ds.NewZiplist()}
 }
 
-func (zp *Zipmap) set(key, val []byte) {
+func (zp *Zipmap) set(field, val []byte) {
 	var update bool
 	if zp.Zllen() > 0 {
-		idx, _ := zp.find(key)
-		if idx <= zp.Zllen() { // update
+		idx, _ := zp.find(field)
+		if idx < zp.Zllen() { // update
 			update = true
 			zp.ReplaceAtIndex(idx, val)
 		}
 	}
 
 	if !update {
-		zp.Push(key)
+		zp.Push(field)
 		zp.Push(val)
 	}
-	return
 }
 
-func (zp *Zipmap) get(key []byte) (val []byte) {
+func (zp *Zipmap) get(field []byte) (val []byte) {
 	if zp.Zllen() == 0 {
 		return
 	}
-	idx, offset := zp.find(key)
-	if idx <= zp.Zllen() {
+	idx, offset := zp.find(field)
+	if idx >= zp.Zllen() {
 		return
 	}
 	val, _ = zp.DecodeEntry(offset)
-	return
+	return val
 }
 
-func (zp *Zipmap) del(key []byte) {
+func (zp *Zipmap) del(field []byte) {
 	if zp.Zllen() == 0 {
 		return
 	}
-	idx, _ := zp.find(key)
-	zp.RemoveHead(2, idx)
+	idx, _ := zp.find(field)
+	zp.RemoveHead(2, idx-1)
 	return
 }
 
-func (zp *Zipmap) find(key []byte) (int16, int32) {
-	iter := ds.NewZiplistIterator(zp.Ziplist)
+func (zp *Zipmap) exists(field []byte) bool {
+	if zp.Zllen() == 0 {
+		return false
+	}
+	idx, _ := zp.find(field)
+	return idx < zp.Zllen()
+}
 
+func (zp *Zipmap) hlen() int16 {
+	return zp.Zllen() / 2
+}
+
+func (zp *Zipmap) find(field []byte) (int16, int32) {
+	iter := ds.NewZiplistIterator(zp.Ziplist)
 	for iter.HasNext() {
 		entry := iter.Next()
-		prevlen := zp.PrevLen(iter.Offset())
-		encoded := zp.EncodeEntry(prevlen, key)
-		if slices.Compare(entry, encoded) == 0 {
-			iter.Next()
+		if slices.Compare(entry, field) == 0 {
 			break
 		}
 	}
