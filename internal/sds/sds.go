@@ -8,24 +8,28 @@ import (
 )
 
 type sds interface {
-	Append(*obj.Robj, SDS)
+	Append(*obj.Robj, []byte)
 	Len(*obj.Robj) int64
 	Incr(*obj.Robj, int64) int64
 }
 
 func NewRobj(val any) *obj.Robj {
-	robj := obj.NewRobj(val)
+	robj := obj.Robj{}
 	robj.SetType(obj.ObjString)
 	switch val.(type) {
 	case SDS:
 		robj.SetEncoding(obj.ObjEncodingRaw)
+	case []byte:
+		val = New(val.([]byte))
+		robj.SetEncoding(obj.ObjEncodingRaw)
 	case int64:
 		robj.SetEncoding(obj.ObjEncodingInt)
 	}
-	return robj
+	robj.SetVal(val)
+	return &robj
 }
 
-func Append(robj *obj.Robj, s SDS) {
+func Append(robj *obj.Robj, s []byte) {
 	if robj.CheckEncoding(obj.ObjEncodingRaw) {
 		unwrap(robj).Cat(s)
 	}

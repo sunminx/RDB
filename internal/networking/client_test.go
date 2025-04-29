@@ -3,17 +3,16 @@ package networking
 import (
 	"testing"
 
-	"github.com/sunminx/RDB/internal/dict"
-	"github.com/sunminx/RDB/internal/sds"
+	obj "github.com/sunminx/RDB/internal/object"
 )
 
 func NewMockClient(buf []byte) *Client {
 	return &Client{
 		Conn:         nil,
 		fd:           0,
-		server:       NewMockServer(),
+		srv:          newMockServer(),
 		flags:        ClientNone,
-		querybuf:     *sds.New(buf),
+		querybuf:     make([]byte, 0),
 		multibulklen: 0,
 		bulklen:      -1,
 		argc:         0,
@@ -22,21 +21,21 @@ func NewMockClient(buf []byte) *Client {
 	}
 }
 
-func NewMockServer() *Server {
+func newMockServer() *Server {
 	return &Server{
-		requirepass: true,
+		Requirepass: true,
 	}
 }
 
 func TestProcessInline(t *testing.T) {
 	testcases := []struct {
 		input []byte
-		want  []*dict.Robj
+		want  []*obj.Robj
 	}{
 		{input: []byte("$12\r\nset name jim\r\n"),
-			want: []*dict.Robj{dict.NewRobj([]byte("set")),
-				dict.NewRobj([]byte("name")),
-				dict.NewRobj([]byte("jim"))}},
+			want: []*obj.Robj{obj.NewRobj([]byte("set")),
+				obj.NewRobj([]byte("name")),
+				obj.NewRobj([]byte("jim"))}},
 	}
 
 	for _, tc := range testcases {
@@ -49,19 +48,19 @@ func TestProcessInline(t *testing.T) {
 func TestProcessMultibulkBuffer(t *testing.T) {
 	testcases := []struct {
 		input []byte
-		want  []*dict.Robj
+		want  []*obj.Robj
 	}{
 		{input: []byte("*3\r\n$3\r\nset\r\n$4\r\nname\r\n$3\r\njim\r\n"),
-			want: []*dict.Robj{dict.NewRobj([]byte("set")),
-				dict.NewRobj([]byte("name")),
-				dict.NewRobj([]byte("jim"))}},
+			want: []*obj.Robj{obj.NewRobj([]byte("set")),
+				obj.NewRobj([]byte("name")),
+				obj.NewRobj([]byte("jim"))}},
 	}
 
 	for _, tc := range testcases {
 		client := NewMockClient(tc.input)
 		client.processMultibulkBuffer()
 		for _, arg := range client.argv {
-			t.Log(string(arg.Val().(*sds.SDS).Bytes()))
+			t.Log(string(arg))
 		}
 	}
 }

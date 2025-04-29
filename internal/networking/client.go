@@ -2,6 +2,7 @@ package networking
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 
@@ -40,22 +41,17 @@ const (
 type Client struct {
 	gnet.Conn
 	*db.DB
-	fd  int
-	srv *Server
-
-	flags         ClientFlag
-	authenticated bool
-
-	querybuf     sds.SDS
-	reqtype      reqType
-	multibulklen int
-	bulklen      int
-
-	argc int
-	argv []sds.SDS
-
-	reply []byte
-
+	fd              int
+	srv             *Server
+	flags           ClientFlag
+	authenticated   bool
+	querybuf        []byte
+	reqtype         reqType
+	multibulklen    int
+	bulklen         int
+	argc            int
+	argv            [][]byte
+	reply           []byte
 	Cmd             cmd.Command
 	LastInteraction int64
 }
@@ -65,12 +61,12 @@ func NewClient(conn gnet.Conn, db *db.DB) *Client {
 		Conn:          conn,
 		DB:            db,
 		fd:            conn.Fd(),
-		querybuf:      sds.NewEmpty(),
+		querybuf:      make([]byte, 0),
 		multibulklen:  0,
 		bulklen:       -1,
 		reqtype:       protoReqNone,
 		argc:          0,
-		argv:          make([]sds.SDS, 0),
+		argv:          make([][]byte, 0),
 		reply:         make([]byte, 0),
 		authenticated: true,
 	}
@@ -97,7 +93,7 @@ func (c *Client) argvByIdx(n int) string {
 	return string(c.argv[n])
 }
 
-func (c *Client) Argv() []sds.SDS {
+func (c *Client) Argv() [][]byte {
 	return c.argv
 }
 
@@ -106,9 +102,9 @@ var (
 )
 
 func (c *Client) processInputBuffer() {
-	for c.querybuf.Len() > 0 {
+	for len(c.querybuf) > 0 {
 		if c.reqtype == protoReqNone {
-			if c.querybuf.FirstByte() == '*' {
+			if c.querybuf[0] == '*' {
 				c.reqtype = protoReqMultibulk
 			} else {
 				c.reqtype = protoReqInline
@@ -128,7 +124,7 @@ func (c *Client) processInputBuffer() {
 		}
 
 		if c.argc == 0 {
-			c.argv = make([]sds.SDS, 0)
+			c.argv = make([][]byte, 0)
 			c.multibulklen = 0
 			c.bulklen = -1
 			c.reqtype = protoReqNone
@@ -140,38 +136,26 @@ func (c *Client) processInputBuffer() {
 
 // processInlineBuffer
 func (c *Client) processInlineBuffer() bool {
-	newline, ok := c.querybuf.SplitNewLine()
-	if !ok {
+	var line []byte
+	line, c.querybuf = splitLine(c.querybuf)
+	if line == nil {
 		return false
 	}
 
-	if newline == nil {
+	if line == nil {
 		if len(c.querybuf) > ProtoInlineMaxSize {
 			c.AddReplyError([]byte("Protocol error: too big mbulk count string"))
 			c.setProtocolError()
 		}
 		return false
 	}
-	c.argv = splitArgs(newline, ' ')
+	c.argv = splitArgs(line, ' ')
 	if len(c.argv) == 0 {
 		c.AddReplyError([]byte("Protocol error: unbalanced quotes in request"))
 		c.setProtocolError()
 	}
 	c.argc = len(c.argv)
 	return true
-}
-
-func splitArgs(bytes []byte, sep byte) []sds.SDS {
-	res := make([]sds.SDS, 0)
-	i := 0
-	for j := 0; j < len(bytes); j++ {
-		if bytes[j] == sep {
-			res = append(res, sds.New(bytes[i:j]))
-			i = j
-		}
-	}
-	res = append(res, sds.New(bytes[i:]))
-	return res
 }
 
 const maxMulitbulksWhileUnauth = 10
@@ -181,15 +165,14 @@ var protoMaxBulkLen = 1024 * 1024 * 512
 
 // processMulitbulkBuffer
 func (c *Client) processMultibulkBuffer() bool {
-	var newline []byte
-	var ok bool
+	var line []byte
 
 	if c.multibulklen == 0 {
-		newline, ok = c.querybuf.SplitNewLine()
-		if !ok {
+		line, c.querybuf = splitLine(c.querybuf)
+		if line == nil {
 			return false
 		}
-		if newline == nil {
+		if line == nil {
 			if len(c.querybuf) > ProtoInlineMaxSize {
 				c.AddReplyError([]byte("Protocol error: too big mbulk count string"))
 				c.setProtocolError()
@@ -197,11 +180,11 @@ func (c *Client) processMultibulkBuffer() bool {
 			return false
 		}
 
-		if newline[0] != '*' {
+		if line[0] != '*' {
 			return false
 		}
 
-		ll, err := strconv.Atoi(string(newline[1:]))
+		ll, err := strconv.Atoi(string(line[1:]))
 		if err != nil || ll > 1024*1024 {
 			c.AddReplyError([]byte("Protocol error: invalid multibulk length"))
 			c.setProtocolError()
@@ -219,17 +202,17 @@ func (c *Client) processMultibulkBuffer() bool {
 		}
 
 		c.multibulklen = ll
-		c.argv = make([]sds.SDS, ll)
+		c.argv = make([][]byte, ll)
 	}
 
 	for c.multibulklen > 0 {
 		// new bulk
 		if c.bulklen == -1 {
-			newline, ok = c.querybuf.SplitNewLine()
-			if !ok {
+			line, c.querybuf = splitLine(c.querybuf)
+			if line == nil {
 				return false
 			}
-			if newline == nil {
+			if line == nil {
 				if len(c.querybuf) > ProtoInlineMaxSize {
 					c.AddReplyError([]byte("Protocol error: too big mbulk count string"))
 					c.setProtocolError()
@@ -239,12 +222,12 @@ func (c *Client) processMultibulkBuffer() bool {
 			}
 
 			// in request, only bulk string in multibulk allowed
-			if newline[0] != '$' {
-				c.AddReplyError([]byte(fmt.Sprintf(`Protocol error: expected '$', got '%c'`, newline[0])))
+			if line[0] != '$' {
+				c.AddReplyError([]byte(fmt.Sprintf(`Protocol error: expected '$', got '%c'`, line[0])))
 				c.setProtocolError()
 				return false
 			}
-			ll, err := strconv.Atoi(string(newline[1:]))
+			ll, err := strconv.Atoi(string(line[1:]))
 			if err != nil || ll > protoMaxBulkLen {
 				c.AddReplyError([]byte("Protocol error: invalid bulk length"))
 				c.setProtocolError()
@@ -259,19 +242,20 @@ func (c *Client) processMultibulkBuffer() bool {
 		}
 
 		// Read bulk argument
-		if c.querybuf.Len() < c.bulklen+2 {
+		if len(c.querybuf) < c.bulklen+2 {
 			// Not enough data (+2 == trailing \r\n)
 			break
 		}
 
-		s := c.querybuf.DupLine()
-		if s.Len() != c.bulklen {
+		var arg []byte
+		arg, c.querybuf = splitLine(c.querybuf)
+		if len(arg) != c.bulklen {
 			c.AddReplyError([]byte("Protocol error: incorrect bulk length"))
 			c.setProtocolError()
 			return false
 		}
 
-		c.argv[c.argc] = s
+		c.argv[c.argc] = arg
 		c.argc += 1
 		c.bulklen = -1
 		c.multibulklen -= 1
@@ -281,6 +265,33 @@ func (c *Client) processMultibulkBuffer() bool {
 		return true
 	}
 	return false
+}
+
+func splitLine(b []byte) ([]byte, []byte) {
+	idx := slices.Index(b, '\n')
+	if idx == -1 {
+		return nil, b
+	}
+	if b[idx-1] == '\r' {
+		idx -= 1
+	}
+	line := b[:idx]
+	// skip '\r\n'
+	b = b[idx+2:]
+	return line, b
+}
+
+func splitArgs(bytes []byte, sep byte) [][]byte {
+	res := make([][]byte, 0)
+	i := 0
+	for j := 0; j < len(bytes); j++ {
+		if bytes[j] == sep {
+			res = append(res, bytes[i:j])
+			i = j
+		}
+	}
+	res = append(res, bytes[i:])
+	return res
 }
 
 func (c *Client) setProtocolError() {

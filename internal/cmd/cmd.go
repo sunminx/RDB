@@ -4,7 +4,6 @@ import (
 	"time"
 
 	obj "github.com/sunminx/RDB/internal/object"
-	"github.com/sunminx/RDB/internal/sds"
 )
 
 const (
@@ -14,7 +13,7 @@ const (
 
 type client interface {
 	Key() string
-	Argv() []sds.SDS
+	Argv() [][]byte
 	LookupKeyRead(string) (*obj.Robj, bool)
 	LookupKeyWrite(string) (*obj.Robj, bool)
 	SetKey(string, *obj.Robj)

@@ -7,7 +7,6 @@ import (
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
-	"github.com/sunminx/RDB/internal/sds"
 )
 
 type Server struct {
@@ -86,7 +85,7 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 		return gnet.Close
 	}
 
-	cli.querybuf.Cat(sds.New(buf))
+	cli.querybuf = append(cli.querybuf, buf...)
 	cli.processInputBuffer()
 
 	if (cli.flags & ClientCloseASAP) != 0 {

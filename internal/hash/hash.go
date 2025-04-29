@@ -6,10 +6,10 @@ import (
 )
 
 type hash interface {
-	Set(*obj.Robj, sds.SDS, sds.SDS)
-	Get(*obj.Robj, sds.SDS) ([]byte, bool)
-	Del(*obj.Robj, sds.SDS) bool
-	Exists(*obj.Robj, sds.SDS) bool
+	Set(*obj.Robj, []byte, []byte)
+	Get(*obj.Robj, []byte) ([]byte, bool)
+	Del(*obj.Robj, []byte) bool
+	Exists(*obj.Robj, []byte) bool
 }
 
 func NewRobj(val any) *obj.Robj {
@@ -26,23 +26,23 @@ func Set(robj *obj.Robj, field, val sds.SDS) {
 	return
 }
 
-func Get(robj *obj.Robj, field sds.SDS) ([]byte, bool) {
+func Get(robj *obj.Robj, field []byte) ([]byte, bool) {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		return unwrap(robj).get(field.Bytes()), true
+		return unwrap(robj).get(field), true
 	}
 	return nil, false
 }
 
-func Del(robj *obj.Robj, field sds.SDS) {
+func Del(robj *obj.Robj, field []byte) {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		unwrap(robj).del(field.Bytes())
+		unwrap(robj).del(field)
 	}
 	return
 }
 
-func Exists(robj *obj.Robj, field sds.SDS) bool {
+func Exists(robj *obj.Robj, field []byte) bool {
 	if robj.CheckEncoding(obj.ObjEncodingZiplist) {
-		idx, _ := unwrap(robj).find(field.Bytes())
+		idx, _ := unwrap(robj).find(field)
 		return idx > 0
 	}
 	return false

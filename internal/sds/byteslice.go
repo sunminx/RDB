@@ -57,8 +57,8 @@ func (s *SDS) Empty() {
 	(*s) = (*s)[:0]
 }
 
-func (s *SDS) Cat(t SDS) {
-	(*s) = append(*s, t...)
+func (s *SDS) Cat(b []byte) {
+	(*s) = append(*s, b...)
 }
 
 func (s *SDS) Cmp(t SDS) int {

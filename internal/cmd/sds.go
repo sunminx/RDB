@@ -24,13 +24,11 @@ func GetCommand(cli client) bool {
 	return OK
 }
 
-var emptySDS = sds.NewEmpty()
-
 func SetCommand(cli client) bool {
 	key := cli.Key()
 	argv := cli.Argv()
 	for i := 2; i < len(argv); i++ {
-		_ = setGenericCommand(cli, key, argv[i], emptySDS)
+		_ = setGenericCommand(cli, key, argv[i], nil)
 	}
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
@@ -49,24 +47,25 @@ func AppendCommand(cli client) bool {
 	argv := cli.Argv()
 	val, ok := cli.LookupKeyRead(key)
 	if !ok {
-		_ = setGenericCommand(cli, key, argv[2], emptySDS)
+		_ = setGenericCommand(cli, key, argv[2], nil)
 		return OK
 	}
 	if !val.CheckType(obj.ObjString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
+
 	sds.Append(val, argv[2])
-	_ = setGenericCommand(cli, key, val.Val().(sds.SDS), emptySDS)
+	_ = setGenericCommand(cli, key, val.Val().(sds.SDS), nil)
 
 	cli.AddReplyBulk(val)
 	return OK
 }
 
-func setGenericCommand(cli client, key string, val, expire sds.SDS) bool {
+func setGenericCommand(cli client, key string, val, expire []byte) bool {
 	var milliseconds int64
 
-	if !expire.IsEmpty() {
+	if expire != nil {
 		var err error
 		milliseconds, err = strconv.ParseInt(string(expire), 10, 64)
 		if err != nil {
