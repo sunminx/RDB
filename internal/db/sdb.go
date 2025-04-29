@@ -8,10 +8,26 @@ import (
 	"github.com/sunminx/RDB/internal/sds"
 )
 
+type sdbs []*sdb
+
+func (s sdbs) Len() int {
+	return len(s)
+}
+
+func (s sdbs) Less(i, j int) bool {
+	return s[i].slen < s[j].slen
+}
+
+func (s sdbs) Swap(i, j int) {
+	s[i], s[j] = s[j], s[i]
+}
+
 type sdb struct {
 	sync.RWMutex
+	id      int
 	dict    dictable
 	expires dictable
+	slen    int64
 }
 
 type dictable interface {
@@ -24,8 +40,8 @@ type dictable interface {
 	Size() int
 }
 
-func newSdb() *sdb {
-	return &sdb{sync.RWMutex{}, NewMap(), NewMap()}
+func newSdb(id int) *sdb {
+	return &sdb{sync.RWMutex{}, id, NewMap(), NewMap(), 0}
 }
 
 func (sdb *sdb) lookupKey(key string) (*obj.Robj, bool) {
