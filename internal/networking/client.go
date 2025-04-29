@@ -78,10 +78,6 @@ func nilClient() *Client {
 	return cli
 }
 
-func (c *Client) isNil() bool {
-	return c.fd == -1
-}
-
 func (c *Client) Key() string {
 	return c.argvByIdx(1)
 }

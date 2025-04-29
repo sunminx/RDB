@@ -23,9 +23,7 @@ func LPushCommand(cli client) bool {
 }
 
 func pushGenericCommand(cli client, where int8) bool {
-	key := cli.Key()
-	argv := cli.Argv()
-
+	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
 		if !val.CheckType(obj.ObjList) {
@@ -62,7 +60,6 @@ func LPopCommand(cli client) bool {
 
 func popGenericCommand(cli client, where int8) bool {
 	key := cli.Key()
-
 	val, exists := cli.LookupKeyRead(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
@@ -85,9 +82,7 @@ func popGenericCommand(cli client, where int8) bool {
 }
 
 func LIndexCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
-
+	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
@@ -113,7 +108,6 @@ func LIndexCommand(cli client) bool {
 
 func LLenCommand(cli client) bool {
 	key := cli.Key()
-
 	val, exists := cli.LookupKeyRead(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
@@ -165,7 +159,6 @@ func LSetCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
-
 	argv := cli.Argv()
 	index, err := strconv.ParseInt(string(argv[2]), 10, 64)
 	if err != nil {

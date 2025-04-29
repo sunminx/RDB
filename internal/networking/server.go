@@ -165,7 +165,7 @@ func (s *Server) clientsCron() {
 	now := time.Now()
 	for i := s.MaxFd; i >= 0; i-- {
 		cli := s.Clients[i]
-		if cli.isNil() {
+		if cli.fd == -1 {
 			continue
 		}
 		if cli.handleTimeout(now.UnixMilli()) {

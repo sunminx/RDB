@@ -8,9 +8,7 @@ import (
 )
 
 func HSetCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
-
+	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
 		if !val.CheckType(obj.ObjHash) {
@@ -28,9 +26,7 @@ func HSetCommand(cli client) bool {
 }
 
 func HGetCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
-
+	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
 		if !val.CheckType(obj.ObjHash) {
@@ -50,9 +46,7 @@ func HGetCommand(cli client) bool {
 }
 
 func HDelCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
-
+	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
 		if !val.CheckType(obj.ObjHash) {
@@ -91,8 +85,7 @@ func HLenCommand(cli client) bool {
 }
 
 func HExistsCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
+	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
 		if !val.CheckType(obj.ObjHash) {

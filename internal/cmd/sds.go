@@ -25,8 +25,7 @@ func GetCommand(cli client) bool {
 }
 
 func SetCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
+	key, argv := cli.Key(), cli.Argv()
 	for i := 2; i < len(argv); i++ {
 		_ = setGenericCommand(cli, key, argv[i], nil)
 	}
@@ -35,16 +34,14 @@ func SetCommand(cli client) bool {
 }
 
 func SetexCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
+	key, argv := cli.Key(), cli.Argv()
 	_ = setGenericCommand(cli, key, argv[3], argv[2])
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
 
 func AppendCommand(cli client) bool {
-	key := cli.Key()
-	argv := cli.Argv()
+	key, argv := cli.Key(), cli.Argv()
 	val, ok := cli.LookupKeyRead(key)
 	if !ok {
 		_ = setGenericCommand(cli, key, argv[2], nil)
