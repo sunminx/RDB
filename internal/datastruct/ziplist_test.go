@@ -29,7 +29,7 @@ func TestZipStrSize(t *testing.T) {
 		_type       byte
 		encoding    []byte
 		lensizeWant int32
-		_lenWant    int32
+		lnWant      int32
 	}{
 		{zipStr06b, []byte{0b00111111}, 1, 63},
 		{zipStr06b, []byte{0b00000001}, 1, 1},
@@ -39,12 +39,12 @@ func TestZipStrSize(t *testing.T) {
 	}
 
 	for _, tc := range testcases {
-		lensize, _len := zipStrSize(tc._type, tc.encoding)
-		if lensize != tc.lensizeWant || _len != tc._lenWant {
-			t.Log(_len)
-			t.Log(tc._lenWant)
-			t.Errorf("zipStrSize: lensize: %d want: %d _len: %d want: %d\n",
-				lensize, tc.lensizeWant, _len, tc._lenWant)
+		lensize, ln := zipStrSize(tc._type, tc.encoding)
+		if lensize != tc.lensizeWant || ln != tc.lnWant {
+			t.Log(ln)
+			t.Log(tc.lnWant)
+			t.Errorf("zipStrSize: lensize: %d want: %d ln: %d want: %d\n",
+				lensize, tc.lensizeWant, ln, tc.lnWant)
 		}
 	}
 }

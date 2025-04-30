@@ -17,8 +17,6 @@ type DB struct {
 	sdblen int
 }
 
-const dbcount = 16
-
 const (
 	// Redoing represents that aof or rdb is being redone.
 	// During this period, the data is written to tmpdb (sdbs[len(sdbs)-1]).
@@ -26,9 +24,9 @@ const (
 )
 
 func New() *DB {
-	sdb := make([]*sdb, dbcount, dbcount)
+	sdb := make([]*sdb, 2, 2)
 	var i int
-	for ; i < dbcount; i++ {
+	for ; i < 2; i++ {
 		sdb[i] = newSdb(i)
 	}
 	return &DB{sdbs: sdb, sdblen: i}

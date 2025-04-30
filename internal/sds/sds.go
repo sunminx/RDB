@@ -57,20 +57,20 @@ func Incr(robj *obj.Robj, n int64) int64 {
 }
 
 func digit10(n int64) int64 {
-	var _len int64
+	var ln int64
 	if n < 0 {
-		_len = 1
+		ln = 1
 		n = -n
 	}
 
 	if n < 10 {
-		return _len + 1
+		return ln + 1
 	}
 	if n < 100 {
-		return _len + 2
+		return ln + 2
 	}
 	if n < 1000 {
-		return _len + 3
+		return ln + 3
 	}
 	// < 12
 	if n < 1000000000000 {
@@ -80,20 +80,20 @@ func digit10(n int64) int64 {
 			if n < 1000000 {
 				// 4 [1000, 9999]
 				if n < 10000 {
-					return _len + 4
+					return ln + 4
 				}
 				// 5-6
-				return _len + 5 + cond(n >= 100000)
+				return ln + 5 + cond(n >= 100000)
 			}
 			// 7-8
-			return _len + 7 + cond(n >= 10000000)
+			return ln + 7 + cond(n >= 10000000)
 		}
 		if n < 10000000000 {
-			return _len + 9 + cond(n >= 1000000000)
+			return ln + 9 + cond(n >= 1000000000)
 		}
-		return _len + 11 + cond(n >= 100000000000)
+		return ln + 11 + cond(n >= 100000000000)
 	}
-	return _len + 12 + digit10(n/1000000000000)
+	return ln + 12 + digit10(n/1000000000000)
 }
 
 func cond(c bool) int64 {

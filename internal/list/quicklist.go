@@ -8,10 +8,10 @@ import (
 )
 
 type Quicklist struct {
-	head  *quicklistNode
-	tail  *quicklistNode
-	count int64 // total count of all entries in all ziplists
-	_len  int64 // number of quicklistNodes
+	head *quicklistNode
+	tail *quicklistNode
+	cnt  int64 // total count of all entries in all ziplists
+	ln   int64 // number of quicklistNodes
 }
 
 func NewQuicklist() *Quicklist {
@@ -19,7 +19,7 @@ func NewQuicklist() *Quicklist {
 }
 
 func (l *Quicklist) Len() int64 {
-	return l.count
+	return l.cnt
 }
 
 const (
@@ -31,14 +31,14 @@ func (l *Quicklist) ReplaceAtIndex(index int64, entry []byte) {
 	if index < 0 {
 		index = 0
 	}
-	if index >= l.count {
-		index = l.count - 1
+	if index >= l.cnt {
+		index = l.cnt - 1
 	}
 
 	node := l.head
 	for {
 		var step int64 = util.CondInt64(index > math.MaxInt16, math.MaxInt16, index)
-		if int16(step) < node.count {
+		if int16(step) < node.cnt {
 			break
 		}
 		index -= step
@@ -61,7 +61,7 @@ func (l *Quicklist) Push(entry []byte) {
 func (l *Quicklist) insert(entry []byte, where int8) {
 	node := l.getNodeOrCreateIfNeeded(int32(len(entry)), where)
 	node.insert(entry, where)
-	l.count++
+	l.cnt++
 	return
 }
 
@@ -69,9 +69,9 @@ func (l *Quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 	where int8) *quicklistNode {
 
 	var node *quicklistNode
-	if l._len == 0 {
+	if l.ln == 0 {
 		node = newQuicklistNode()
-		l._len++
+		l.ln++
 		l.head = node
 		l.tail = node
 		return node
@@ -89,7 +89,7 @@ func (l *Quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 				head.prev = node
 				node.next = head
 			}
-			l._len++
+			l.ln++
 		}
 	} else if where == quicklistTail {
 		node = l.tail
@@ -103,7 +103,7 @@ func (l *Quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 				node.prev = tail
 				tail.next = node
 			}
-			l._len++
+			l.ln++
 		}
 	}
 	return node
@@ -114,7 +114,7 @@ type quicklistNode struct {
 	next    *quicklistNode
 	zl      *ds.Ziplist
 	zlbytes int32 // ziplist size in bytes
-	count   int16 // count of items in ziplist
+	cnt     int16 // cnt of items in ziplist
 	fill    int16
 }
 
@@ -123,7 +123,7 @@ func newQuicklistNode() *quicklistNode {
 	return &quicklistNode{
 		zl:      zl,
 		zlbytes: zl.Zlbytes(),
-		count:   zl.Zllen(),
+		cnt:     zl.Zllen(),
 		fill:    2,
 	}
 }
@@ -135,12 +135,12 @@ func (n *quicklistNode) insert(entry []byte, where int8) {
 		n.zl.Push(entry)
 	}
 	n.zlbytes = n.zl.Zlbytes()
-	n.count = n.zl.Zllen()
+	n.cnt = n.zl.Zllen()
 	return
 }
 
-func (n *quicklistNode) insertAllowed(_len int32) bool {
-	elen := ds.ZiplistEntryEncodeLen(_len)
+func (n *quicklistNode) insertAllowed(ln int32) bool {
+	elen := ds.ZiplistEntryEncodeLen(ln)
 	nzlbytes := n.zlbytes + elen
 	return quicklistNodeMeetsOptimizationLevel(nzlbytes, n.fill)
 }
@@ -155,7 +155,7 @@ func (n *quicklistNode) mergeNeeded(neighborNode *quicklistNode) bool {
 		return true
 	} else if !quicklistNodeMeetsSafetyLimit(mergeLen) {
 		return false
-	} else if n.count+neighborNode.count < n.fill {
+	} else if n.cnt+neighborNode.cnt < n.fill {
 		return true
 	} else {
 		return false
@@ -165,25 +165,25 @@ func (n *quicklistNode) mergeNeeded(neighborNode *quicklistNode) bool {
 // var optimizationLevel = []int32{4096, 8192, 16384, 32768, 65536}
 var optimizationLevel = []int32{16, 64, 128, 512, 1024}
 
-func quicklistNodeMeetsOptimizationLevel(_len int32, fill int16) bool {
-	return _len < optimizationLevel[fill]
+func quicklistNodeMeetsOptimizationLevel(ln int32, fill int16) bool {
+	return ln < optimizationLevel[fill]
 }
 
 // const safetyLimit int32 = 8192
 const safetyLimit int32 = 64
 
-func quicklistNodeMeetsSafetyLimit(_len int32) bool {
-	return _len < safetyLimit
+func quicklistNodeMeetsSafetyLimit(ln int32) bool {
+	return ln < safetyLimit
 }
 
 func (n *quicklistNode) insertEncoded(offset int32, encoded []byte,
-	_len int16, headprevlen, taillen int32) {
-	n.zl.InsertEncoded(offset, encoded, _len, headprevlen, taillen)
+	ln int16, headprevlen, taillen int32) {
+	n.zl.InsertEncoded(offset, encoded, ln, headprevlen, taillen)
 	return
 }
 
 func (n *quicklistNode) extractEncoded() (encoded []byte,
-	_len int16, headprevlen, taillen int32) {
+	ln int16, headprevlen, taillen int32) {
 	return n.zl.ExtractEncoded()
 }
 
@@ -206,7 +206,7 @@ func (l *Quicklist) Pop() {
 }
 
 func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
-	if l.count == 0 {
+	if l.cnt == 0 {
 		return 0
 	}
 
@@ -226,7 +226,7 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 			removednum, skipednum, pass = node.zl.RemoveHead(removenum, skipenum)
 			if pass {
 				if l.head.zl.Zllen() == 0 {
-					l._len--
+					l.ln--
 					l.head = neighborNode
 					node = l.head
 				} else {
@@ -238,7 +238,7 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 			removednum, skipednum, pass = node.zl.RemoveTail(removenum, skipenum)
 			if pass {
 				if l.tail.zl.Zllen() == 0 {
-					l._len--
+					l.ln--
 					l.tail = neighborNode
 				} else {
 					node = neighborNode
@@ -247,7 +247,7 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 		}
 		num -= int64(removednum)
 		skipnum -= int64(skipednum)
-		l.count -= int64(removednum)
+		l.cnt -= int64(removednum)
 		if neighborNode == nil {
 			break
 		}
@@ -257,13 +257,13 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 		if where == quicklistHead {
 			node = l.unlinkHeadNode()
 			offset := node.headOffset()
-			encoded, _len, headprevlen, taillen := node.extractEncoded()
-			l.head.insertEncoded(offset, encoded, _len, headprevlen, taillen)
+			encoded, ln, headprevlen, taillen := node.extractEncoded()
+			l.head.insertEncoded(offset, encoded, ln, headprevlen, taillen)
 		} else if where == quicklistTail {
 			node = l.unlinkTailNode()
 			offset := node.endOffset()
-			encoded, _len, headprevlen, taillen := node.extractEncoded()
-			l.tail.insertEncoded(offset, encoded, _len, headprevlen, taillen)
+			encoded, ln, headprevlen, taillen := node.extractEncoded()
+			l.tail.insertEncoded(offset, encoded, ln, headprevlen, taillen)
 		}
 	}
 	return 0
@@ -286,7 +286,7 @@ func (l *Quicklist) unlinkTailNode() *quicklistNode {
 }
 
 func (l *Quicklist) Index(idx int64) ([]byte, bool) {
-	if idx >= l.count {
+	if idx >= l.cnt {
 		return nil, false
 	}
 
@@ -306,8 +306,8 @@ func (l *Quicklist) Range(start, end int64) (entrys [][]byte) {
 	if start < 0 {
 		start = 0
 	}
-	if end > l.count {
-		end = l.count
+	if end > l.cnt {
+		end = l.cnt
 	}
 
 	var entry []byte
@@ -331,14 +331,14 @@ func (l *Quicklist) Trim(start, end int64) {
 	if start < 0 {
 		start = 0
 	}
-	if end > l.count {
-		end = l.count
+	if end > l.cnt {
+		end = l.cnt
 	}
 
 	var removenum int64
 	removenum = start
 	l.remove(quicklistHead, removenum, 0)
-	removenum = l.count - end
+	removenum = l.cnt - end
 	l.remove(quicklistTail, removenum, 0)
 	return
 }
@@ -371,7 +371,7 @@ func newQuicklistIterator(list *Quicklist) *quicklistIterator {
 }
 
 func (iter *quicklistIterator) hasNext() bool {
-	return iter.idx < iter.list.count
+	return iter.idx < iter.list.cnt
 }
 
 func (iter *quicklistIterator) next() []byte {

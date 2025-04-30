@@ -61,7 +61,7 @@ type Client struct {
 
 type multiState struct {
 	commands []multiCmd
-	count    int
+	cnt      int64
 }
 
 type multiCmd struct {
@@ -73,7 +73,7 @@ type multiCmd struct {
 func newMultiState() *multiState {
 	return &multiState{
 		commands: make([]multiCmd, 0),
-		count:    0,
+		cnt:      0,
 	}
 }
 
@@ -386,14 +386,15 @@ func (c *Client) queueMultiCommand() {
 	}
 	multiCmd := multiCmd{c.cmd, c.argc, c.argv}
 	multiState.commands = append(multiState.commands, multiCmd)
-	multiState.count += 1
+	multiState.cnt += 1
 	c.argc = 0
 }
 
 func (c *Client) MultiExec() {
 	multiState := c.multiState
-	c.addReplyMultibulkLen(int64(multiState.count))
-	for i := 0; i < multiState.count; i++ {
+	c.addReplyMultibulkLen(int64(multiState.cnt))
+	var i int64
+	for ; i < multiState.cnt; i++ {
 		multiCmd := multiState.commands[i]
 		c.argc = multiCmd.argc
 		c.argv = multiCmd.argv
@@ -490,16 +491,16 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 		c.AddReplyRaw(s.Bytes())
 	} else {
 		n := robj.Val().(int64)
-		_len := 1
+		ln := 1
 		if n < 0 {
-			_len += 1
+			ln += 1
 			n = -n
 		}
 
 		for n = n / 10; n != 0; n = n / 10 {
-			_len += 1
+			ln += 1
 		}
-		c.AddReplyRaw([]byte("$" + strconv.Itoa(_len) + "\r\n"))
+		c.AddReplyRaw([]byte("$" + strconv.Itoa(ln) + "\r\n"))
 		c.AddReplyRaw([]byte(strconv.FormatInt(n, 10)))
 	}
 	c.AddReplyRaw(common.Shared["crlf"])
@@ -514,8 +515,8 @@ func (c *Client) AddReplyMultibulk(robjs []*obj.Robj) {
 	return
 }
 
-func (c *Client) addReplyMultibulkLen(_len int64) {
-	c.AddReplyRaw([]byte(fmt.Sprintf("*%d\r\n", _len)))
+func (c *Client) addReplyMultibulkLen(ln int64) {
+	c.AddReplyRaw([]byte(fmt.Sprintf("*%d\r\n", ln)))
 }
 
 func (c *Client) handleTimeout(now int64) bool {

@@ -31,7 +31,7 @@ func TestQuicklistPushWithCreateNewNode(t *testing.T) {
 			t.Log(entry)
 		}
 	}
-	t.Log(list._len)
+	t.Log(list.ln)
 }
 
 func TestQuicklistPop(t *testing.T) {
@@ -43,14 +43,14 @@ func TestQuicklistPop(t *testing.T) {
 	list.Push([]byte(strings.Repeat("ddddd", 6)))
 	list.Push([]byte(strings.Repeat("eeeee", 6)))
 	list.Push([]byte(strings.Repeat("fffff", 6)))
-	t.Log(list.count)
+	t.Log(list.cnt)
 	list.PopLeft()
-	t.Log(list.count)
+	t.Log(list.cnt)
 	list.PopLeft()
 	list.Pop()
 	list.Pop()
 	list.Pop()
-	t.Log(list.count)
+	t.Log(list.cnt)
 	for i := 0; i < 3; i++ {
 		entry, ok := list.Index(int64(i))
 		if ok {
@@ -69,11 +69,11 @@ func TestQuicklistRemove(t *testing.T) {
 	list.Push([]byte(strings.Repeat("ddddd", 6)))
 	list.Push([]byte(strings.Repeat("eeeee", 6)))
 	list.Push([]byte(strings.Repeat("fffff", 6)))
-	t.Log(list.count)
-	t.Log(list._len)
+	t.Log(list.cnt)
+	t.Log(list.ln)
 	list.remove(quicklistTail, 3, 3)
-	t.Log(list.count)
-	t.Log(list._len)
+	t.Log(list.cnt)
+	t.Log(list.ln)
 	entry, _ := list.Index(1)
 	t.Log(string(entry))
 }
@@ -87,8 +87,8 @@ func TestQuicklistReplaceAtIndex(t *testing.T) {
 	list.Push([]byte(strings.Repeat("ddddd", 6)))
 	list.Push([]byte(strings.Repeat("eeeee", 6)))
 	list.Push([]byte(strings.Repeat("fffff", 6)))
-	t.Log(list.count)
-	t.Log(list._len)
+	t.Log(list.cnt)
+	t.Log(list.ln)
 	list.ReplaceAtIndex(3, []byte(strings.Repeat("ggggg", 6)))
 	entry, _ := list.Index(2)
 	t.Log(string(entry))
