@@ -499,7 +499,8 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 		c.AddReplyRaw([]byte("$" + strconv.Itoa(s.Len()) + "\r\n"))
 		c.AddReplyRaw(s.Bytes())
 	} else {
-		n := robj.Val().(int64)
+		val := robj.Val().(int64)
+		n := val
 		ln := 1
 		if n < 0 {
 			ln += 1
@@ -510,7 +511,7 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 			ln += 1
 		}
 		c.AddReplyRaw([]byte("$" + strconv.Itoa(ln) + "\r\n"))
-		c.AddReplyRaw([]byte(strconv.FormatInt(n, 10)))
+		c.AddReplyRaw([]byte(strconv.FormatInt(val, 10)))
 	}
 	c.AddReplyRaw(common.Shared["crlf"])
 }
