@@ -418,27 +418,36 @@ func (c *Client) call() bool {
 }
 
 func (c *Client) Wake() {
+	// Wake triggers a OnTraffic event for the current connection.
 	c.Conn.Wake(nil)
 }
 
+// AddReply output the complete value to client.
 func (c *Client) AddReply(robj *obj.Robj) {
-	if robj.SDSEncodedObject() {
-		c.AddReplySds(robj.Val().(sds.SDS))
-	} else {
-		num := robj.Val().(int64)
-		c.addReplyString(strconv.FormatInt(num, 10))
+	switch robj.Type() {
+	case obj.ObjString:
+		{
+			var reply []byte
+			if robj.CheckEncoding(obj.ObjEncodingRaw) {
+				reply = robj.Val().(sds.SDS)
+			} else if robj.CheckEncoding(obj.ObjEncodingInt) {
+				num := robj.Val().(int64)
+				reply = []byte(strconv.FormatInt(num, 10))
+			}
+			c.AddReplyStatus(reply)
+		}
+	case obj.ObjList:
+	case obj.ObjHash:
+	default:
 	}
-	return
 }
 
-func (c *Client) AddReplySds(s sds.SDS) {
-	c.reply = append(c.reply, s.Bytes()...)
-}
-
+// AddReply output a byte slices to client. You need to complete the encode in advance.
 func (c *Client) AddReplyRaw(bytes []byte) {
 	c.reply = append(c.reply, bytes...)
 }
 
+// AddReplyError output simple errors to client. eg: "-Err message\r\n".
 func (c *Client) AddReplyError(err []byte) {
 	if len(err) == 0 || err[0] != '-' {
 		c.reply = append(c.reply, []byte("-ERR ")...)
@@ -453,54 +462,34 @@ func (c *Client) AddReplyErrorFormat(format string, args ...any) {
 	c.AddReplyError([]byte(err))
 }
 
+// AddReplyStatus output simple strings to client. eg: "+OK\r\n".
 func (c *Client) AddReplyStatus(status []byte) {
 	c.reply = append(c.reply, '+')
 	c.reply = append(c.reply, status...)
 	c.reply = append(c.reply, []byte("\r\n")...)
 }
 
+// AddReplyInt64 output a signed, base-10, 64-bit integer to client. eg: ":0\r\n".
 func (c *Client) AddReplyInt64(n int64) {
 	if n == 0 {
 		c.AddReplyRaw(common.Shared["czero"])
 	} else if n == 1 {
 		c.AddReplyRaw(common.Shared["cone"])
 	} else {
-		c.addReplyInt64WithPrefix(n, []byte{':'})
+		s := ":" + strconv.FormatInt(n, 10) + "\r\n"
+		c.AddReplyRaw([]byte(s))
 	}
-	return
 }
 
-func (c *Client) addReplyInt64WithPrefix(n int64, prefix []byte) {
-	s := string(prefix) + strconv.FormatInt(n, 10) + "\r\n"
-	c.addReplyString(s)
-}
-
-func (c *Client) AddReplyMultibulk(robjs []*obj.Robj) {
-	c.addReplyMultibulkLen(int64(len(robjs)))
-	for _, robj := range robjs {
-		c.AddReplyBulk(robj)
-	}
-	return
-}
-
-func (c *Client) addReplyMultibulkLen(_len int64) {
-	c.addReplyString(fmt.Sprintf("*%d\r\n", _len))
-}
-
+// AddReplyBulk output bulk strings to client. bulk strings represents a single binary
+// string. The string can be of any size. eg: "$6\r\nfoobar\r\n".
 func (c *Client) AddReplyBulk(robj *obj.Robj) {
-	c.addReplyBulkLen(robj)
-	c.AddReply(robj)
-	c.AddReplyRaw(common.Shared["crlf"])
-}
-
-func (c *Client) addReplyBulkLen(robj *obj.Robj) {
-	var slen string
 	if robj.SDSEncodedObject() {
 		s := robj.Val().(sds.SDS)
-		slen = strconv.Itoa(s.Len())
+		c.AddReplyRaw([]byte("$" + strconv.Itoa(s.Len()) + "\r\n"))
+		c.AddReplyRaw(s.Bytes())
 	} else {
 		n := robj.Val().(int64)
-
 		_len := 1
 		if n < 0 {
 			_len += 1
@@ -510,13 +499,23 @@ func (c *Client) addReplyBulkLen(robj *obj.Robj) {
 		for n = n / 10; n != 0; n = n / 10 {
 			_len += 1
 		}
-		slen = strconv.Itoa(_len)
+		c.AddReplyRaw([]byte("$" + strconv.Itoa(_len) + "\r\n"))
+		c.AddReplyRaw([]byte(strconv.FormatInt(n, 10)))
 	}
-	c.addReplyString("$" + slen + "\r\n")
+	c.AddReplyRaw(common.Shared["crlf"])
 }
 
-func (c *Client) addReplyString(s string) {
-	c.reply = append(c.reply, []byte(s)...)
+// AddReplyMultibulk output arrays to client. eg: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n".
+func (c *Client) AddReplyMultibulk(robjs []*obj.Robj) {
+	c.addReplyMultibulkLen(int64(len(robjs)))
+	for _, robj := range robjs {
+		c.AddReplyBulk(robj)
+	}
+	return
+}
+
+func (c *Client) addReplyMultibulkLen(_len int64) {
+	c.AddReplyRaw([]byte(fmt.Sprintf("*%d\r\n", _len)))
 }
 
 func (c *Client) handleTimeout(now int64) bool {
