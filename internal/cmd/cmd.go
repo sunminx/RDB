@@ -14,6 +14,9 @@ const (
 type client interface {
 	Key() string
 	Argv() [][]byte
+	Multi() bool
+	SetMulti()
+	MultiExec()
 	LookupKeyRead(string) (*obj.Robj, bool)
 	LookupKeyWrite(string) (*obj.Robj, bool)
 	SetKey(string, *obj.Robj)
@@ -69,4 +72,6 @@ var CommandTable []Command = []Command{
 	{"hdel", HDelCommand, -3, "wF", 0, 1, 1, 1, 0, 0},
 	{"hlen", HLenCommand, 2, "rF", 0, 1, 1, 1, 0, 0},
 	{"hexists", HExistsCommand, 3, "rF", 0, 1, 1, 1, 0, 0},
+	{"multi", MultiCommand, 1, "sF", 0, 0, 0, 0, 0, 0},
+	{"exec", ExecCommand, 1, "sM", 0, 0, 0, 0, 0, 0},
 }

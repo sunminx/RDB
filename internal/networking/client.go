@@ -5,6 +5,7 @@ import (
 	"slices"
 	"strconv"
 	"strings"
+	"sync"
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
@@ -26,6 +27,7 @@ const (
 	dirtyCas
 	closeAfterReply
 	closeASAP
+	queueCall
 	none = 0
 )
 
@@ -50,9 +52,29 @@ type Client struct {
 	bulklen         int
 	argc            int
 	argv            [][]byte
-	reply           []byte
 	cmd             cmd.Command
+	multiState      *multiState
+	reply           []byte
 	lastInteraction int64
+	cmdLock         sync.RWMutex
+}
+
+type multiState struct {
+	commands []multiCmd
+	count    int
+}
+
+type multiCmd struct {
+	cmd  cmd.Command
+	argc int
+	argv [][]byte
+}
+
+func newMultiState() *multiState {
+	return &multiState{
+		commands: make([]multiCmd, 0),
+		count:    0,
+	}
 }
 
 func NewClient(conn gnet.Conn, db *db.DB) *Client {
@@ -92,11 +114,32 @@ func (c *Client) Argv() [][]byte {
 	return c.argv
 }
 
+func (c *Client) Multi() bool {
+	return c.checkFlag(multi)
+}
+
+func (c *Client) SetMulti() {
+	c.setFlag(multi)
+}
+
+func (c *Client) checkFlag(flag flag) bool {
+	return c.flag&flag != 0
+}
+
+func (c *Client) setFlag(flag flag) {
+	c.flag |= flag
+}
+
 var (
 	ProtoInlineMaxSize = 1024 * 64
 )
 
-func (c *Client) processInputBuffer() {
+const (
+	execed  = true
+	nonExec = false
+)
+
+func (c *Client) processInputBuffer() bool {
 	for len(c.querybuf) > 0 {
 		if c.reqtype == reqNone {
 			if c.querybuf[0] == '*' {
@@ -124,9 +167,10 @@ func (c *Client) processInputBuffer() {
 			c.bulklen = -1
 			c.reqtype = reqNone
 		} else {
-			c.processCommand()
+			return c.processCommand()
 		}
 	}
+	return execed
 }
 
 // processInlineBuffer
@@ -293,14 +337,14 @@ func (c *Client) setProtocolError() {
 	c.flag |= closeAfterReply
 }
 
-func (c *Client) processCommand() {
+func (c *Client) processCommand() bool {
 	name := c.argvByIdx(0)
 	name = strings.ToLower(name)
 	if name == "quit" {
 		c.flag |= closeASAP
-		return
+		return true
 	}
-	cmd, ok := c.srv.LookupCommand(name)
+	command, ok := c.srv.LookupCommand(name)
 	if !ok {
 		var args string
 		for i := 1; i < c.argc; i++ {
@@ -313,20 +357,68 @@ func (c *Client) processCommand() {
 		c.AddReplyErrorFormat(`unknown command %q, with args beginning with: %s`,
 			name, args)
 		goto clean
-	} else if (cmd.Arity > 0 && cmd.Arity != c.argc) || (c.argc < -cmd.Arity) {
+	} else if (command.Arity > 0 && command.Arity != c.argc) || (c.argc < -command.Arity) {
 		c.AddReplyErrorFormat(`wrong number of arguments for %q command`, name)
 		goto clean
 	}
 
-	c.cmd = cmd
-	c.call()
+	c.cmd = command
+	if c.flag&multi != 0 && c.cmd.Name != "exec" {
+		c.queueMultiCommand()
+		c.AddReplyRaw([]byte("+QUEUED\r\n"))
+		return execed
+	} else {
+		if !c.call() {
+			return nonExec
+		}
+	}
+
 clean:
 	c.argc = 0
-	return
+	return execed
 }
 
-func (c *Client) call() {
-	_ = c.cmd.Proc(c)
+func (c *Client) queueMultiCommand() {
+	multiState := c.multiState
+	if multiState == nil {
+		multiState = newMultiState()
+		c.multiState = multiState
+	}
+	multiCmd := multiCmd{c.cmd, c.argc, c.argv}
+	multiState.commands = append(multiState.commands, multiCmd)
+	multiState.count += 1
+	c.argc = 0
+}
+
+func (c *Client) MultiExec() {
+	multiState := c.multiState
+	c.addReplyMultibulkLen(int64(multiState.count))
+	for i := 0; i < multiState.count; i++ {
+		multiCmd := multiState.commands[i]
+		c.argc = multiCmd.argc
+		c.argv = multiCmd.argv
+		multiCmd.cmd.Proc(c)
+	}
+	c.multiState = nil
+	c.flag &= ^multi
+}
+
+func (c *Client) call() bool {
+	if c.cmdLock.TryLock() {
+		_ = c.cmd.Proc(c)
+		c.flag &= ^queueCall
+		c.cmdLock.Unlock()
+		c.srv.UnlockNotice <- struct{}{}
+		return execed
+	} else {
+		c.flag |= queueCall
+		c.srv.RunnableClientCh <- c
+		return nonExec
+	}
+}
+
+func (c *Client) Wake() {
+	c.Conn.Wake(nil)
 }
 
 func (c *Client) AddReply(robj *obj.Robj) {
@@ -384,11 +476,15 @@ func (c *Client) addReplyInt64WithPrefix(n int64, prefix []byte) {
 }
 
 func (c *Client) AddReplyMultibulk(robjs []*obj.Robj) {
-	c.addReplyString(fmt.Sprintf("*\r\n%d\r\n", len(robjs)))
+	c.addReplyMultibulkLen(int64(len(robjs)))
 	for _, robj := range robjs {
 		c.AddReplyBulk(robj)
 	}
 	return
+}
+
+func (c *Client) addReplyMultibulkLen(_len int64) {
+	c.addReplyString(fmt.Sprintf("*%d\r\n", _len))
 }
 
 func (c *Client) AddReplyBulk(robj *obj.Robj) {

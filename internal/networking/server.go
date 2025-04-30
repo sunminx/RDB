@@ -2,6 +2,7 @@ package networking
 
 import (
 	"fmt"
+	"sync"
 	"time"
 
 	"github.com/panjf2000/gnet/v2"
@@ -11,23 +12,26 @@ import (
 
 type Server struct {
 	gnet.BuiltinEventEngine
-	MaxIdleTime   int64
-	TcpKeepalive  int
-	ProtectedMode bool
-	TcpBacklog    int
-	Ip            string
-	Port          int
-	ProtoAddr     string
-	MaxFd         int
-	Clients       []*Client
-	cmds          []cmd.Command
-	Requirepass   bool
-	DB            *db.DB
-	CronLoops     int64
-	Hz            int
-	LogLevel      string
-	LogPath       string
-	Version       string
+	MaxIdleTime      int64
+	TcpKeepalive     int
+	ProtectedMode    bool
+	TcpBacklog       int
+	Ip               string
+	Port             int
+	ProtoAddr        string
+	MaxFd            int
+	Clients          []*Client
+	cmds             []cmd.Command
+	Requirepass      bool
+	DB               *db.DB
+	CronLoops        int64
+	Hz               int
+	LogLevel         string
+	LogPath          string
+	Version          string
+	RunnableClientCh chan *Client
+	CmdLock          sync.RWMutex
+	UnlockNotice     chan struct{}
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -41,6 +45,7 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 
 	cli := NewClient(conn, s.DB)
 	cli.srv = s
+	cli.cmdLock = s.CmdLock
 	cli.lastInteraction = time.Now().UnixMilli()
 	s.Clients[fd] = cli
 	return nil, gnet.None
@@ -63,7 +68,7 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 		return gnet.Close
 	}
 
-	return s.readQuery(conn)
+	return s.processTrafficEvent(conn)
 }
 
 func (s *Server) OnTick() (time.Duration, gnet.Action) {
@@ -73,20 +78,26 @@ func (s *Server) OnTick() (time.Duration, gnet.Action) {
 
 var protoIOBufLen = 1024 * 16
 
-func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
+func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 	cli := s.Clients[conn.Fd()]
 	if cli == nil || cli.fd == -1 {
 		return gnet.Close
 	}
 	cli.lastInteraction = time.Now().UnixMilli()
 
-	buf, err := conn.Next(-1)
-	if err != nil {
-		return gnet.Close
+	if cli.flag&queueCall == 0 {
+		if !s.readQuery(cli) {
+			// Failed to locked the cmdLock for call command.
+			// It has been added to the waiting queue and is waiting to be notified.
+			return gnet.None
+		}
+	} else {
+		// Be notified. The requested data has been parsed.
+		// Try to execute the command immediately.
+		if !cli.call() {
+			return gnet.None
+		}
 	}
-
-	cli.querybuf = append(cli.querybuf, buf...)
-	cli.processInputBuffer()
 
 	if (cli.flag & closeASAP) != 0 {
 		return gnet.Close
@@ -101,6 +112,17 @@ func (s *Server) readQuery(conn gnet.Conn) gnet.Action {
 		return gnet.Close
 	}
 	return gnet.None
+}
+
+func (s *Server) readQuery(cli *Client) bool {
+	conn := cli.Conn
+	buf, err := conn.Next(-1)
+	if err != nil {
+		return true
+	}
+
+	cli.querybuf = append(cli.querybuf, buf...)
+	return cli.processInputBuffer()
 }
 
 const defMaxFd = 1024
@@ -133,8 +155,27 @@ func initClients(n int) []*Client {
 	return clis
 }
 
-func (s *Server) SetCommandTable(cmds []cmd.Command) {
-	s.cmds = cmds
+func (s *Server) Init() {
+	s.cmds = cmd.CommandTable
+	s.CmdLock = sync.RWMutex{}
+	s.UnlockNotice = make(chan struct{})
+	s.RunnableClientCh = make(chan *Client, 1024)
+
+	// Receive the message that the lock of command execution is released.
+	// check if there are any clients currently blocking and waiting to execute command,
+	// and wake up the client that is blocking and waiting first.
+	go func() {
+		for {
+			select {
+			case <-s.UnlockNotice:
+				select {
+				case rcmd := <-s.RunnableClientCh:
+					rcmd.Wake()
+				default:
+				}
+			}
+		}
+	}()
 }
 
 func (s *Server) LookupCommand(name string) (cmd.Command, bool) {

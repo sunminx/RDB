@@ -1,7 +1,6 @@
 package db
 
 import (
-	"sync"
 	"time"
 
 	obj "github.com/sunminx/RDB/internal/object"
@@ -23,7 +22,6 @@ func (s sdbs) Swap(i, j int) {
 }
 
 type sdb struct {
-	sync.RWMutex
 	id      int
 	dict    dictable
 	expires dictable
@@ -41,12 +39,10 @@ type dictable interface {
 }
 
 func newSdb(id int) *sdb {
-	return &sdb{sync.RWMutex{}, id, NewMap(), NewMap(), 0}
+	return &sdb{id, NewMap(), NewMap(), 0}
 }
 
 func (sdb *sdb) lookupKey(key string) (*obj.Robj, bool) {
-	sdb.RLock()
-	defer sdb.RUnlock()
 	val, ok := sdb.dict.FetchValue(key)
 	if ok {
 		// todo
@@ -57,9 +53,6 @@ func (sdb *sdb) lookupKey(key string) (*obj.Robj, bool) {
 }
 
 func (sdb *sdb) lookupKeyReadWithFlags(key string) (*obj.Robj, bool) {
-	sdb.Lock()
-	defer sdb.Unlock()
-
 	if sdb.expireIfNeeded(key) {
 		return &emptyRobj, false
 	}
@@ -81,8 +74,6 @@ func (sdb *sdb) expireIfNeeded(key string) bool {
 var emptyRobj = obj.Robj{}
 
 func (sdb *sdb) setKey(key string, val *obj.Robj) {
-	sdb.Lock()
-	defer sdb.Unlock()
 	sds.TryObjectEncoding(val)
 
 	if _, ok := sdb.dict.FetchValue(key); ok {
@@ -93,14 +84,10 @@ func (sdb *sdb) setKey(key string, val *obj.Robj) {
 }
 
 func (sdb *sdb) setExpire(key string, expire time.Duration) {
-	sdb.Lock()
-	defer sdb.Unlock()
 	sdb.expires.Replace(key, sds.NewRobj(int64(expire)))
 }
 
 func (sdb *sdb) delKey(key string) {
-	sdb.Lock()
-	defer sdb.Unlock()
 	sdb.dict.Del(key)
 }
 
