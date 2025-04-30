@@ -139,6 +139,7 @@ const (
 	nonExec = false
 )
 
+// processInputBuffer process the query buffer for client 'c'.
 func (c *Client) processInputBuffer() bool {
 	for len(c.querybuf) > 0 {
 		if c.reqtype == reqNone {
@@ -151,10 +152,14 @@ func (c *Client) processInputBuffer() bool {
 
 		if c.reqtype == reqInline {
 			if !c.processInlineBuffer() {
+				// Even if the request verification is illegal and the command is prematurely terminated.
+				// this processing will be regarded as completed.
 				break
 			}
 		} else if c.reqtype == reqMultibulk {
 			if !c.processMultibulkBuffer() {
+				// Even if the request verification is illegal and the command is prematurely terminated.
+				// this processing will be regarded as completed.
 				break
 			}
 		} else {
@@ -167,7 +172,11 @@ func (c *Client) processInputBuffer() bool {
 			c.bulklen = -1
 			c.reqtype = reqNone
 		} else {
-			return c.processCommand()
+			// As long as the execution of one command is terminated, it is considered that the execution
+			// conditions of the subsequent commands of this client are not met, and the execution is stopped.
+			if !c.processCommand() {
+				return nonExec
+			}
 		}
 	}
 	return execed

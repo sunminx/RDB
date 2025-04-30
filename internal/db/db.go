@@ -1,16 +1,12 @@
 package db
 
 import (
-	"sync"
 	"time"
 
 	obj "github.com/sunminx/RDB/internal/object"
 )
 
 type DB struct {
-	// mu locks the db during the db merge stage.
-	mu sync.RWMutex
-
 	// Usually, the last sdb is always empty and
 	// will only be written when writing key-val during the redo of aof or rdb.
 	sdbs   sdbs
@@ -37,47 +33,35 @@ func (db *DB) lookupSdb(key string) *sdb {
 }
 
 func (db *DB) LookupKeyRead(key string) (*obj.Robj, bool) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	sdb := db.lookupSdb(key)
 	return sdb.lookupKeyReadWithFlags(key)
 }
 
 func (db *DB) LookupKeyWrite(key string) (*obj.Robj, bool) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	// todo
 	sdb := db.lookupSdb(key)
 	return sdb.lookupKey(key)
 }
 
 func (db *DB) SetKey(key string, val *obj.Robj) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	sdb := db.lookupSdb(key)
 	sdb.setKey(key, val)
 	return
 }
 
 func (db *DB) SetExpire(key string, expire time.Duration) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	sdb := db.lookupSdb(key)
 	sdb.setExpire(key, expire)
 	return
 }
 
 func (db *DB) DelKey(key string) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	sdb := db.lookupSdb(key)
 	sdb.delKey(key)
 	return
 }
 
 func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
-	db.mu.RLock()
-	defer db.mu.RUnlock()
 	start := time.Now()
 	exit := false
 	for i := 0; i < db.sdblen; i++ {
