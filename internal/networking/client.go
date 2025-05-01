@@ -189,7 +189,6 @@ func (c *Client) processInlineBuffer() bool {
 	if line == nil {
 		return false
 	}
-
 	if line == nil {
 		if len(c.querybuf) > ProtoInlineMaxSize {
 			c.AddReplyError([]byte("Protocol error: too big mbulk count string"))
@@ -214,7 +213,6 @@ var protoMaxBulkLen = 1024 * 1024 * 512
 // processMulitbulkBuffer
 func (c *Client) processMultibulkBuffer() bool {
 	var line []byte
-
 	if c.multibulklen == 0 {
 		line, c.querybuf = splitLine(c.querybuf)
 		if line == nil {
@@ -308,11 +306,7 @@ func (c *Client) processMultibulkBuffer() bool {
 		c.bulklen = -1
 		c.multibulklen -= 1
 	}
-
-	if c.multibulklen == 0 {
-		return true
-	}
-	return false
+	return c.multibulklen == 0
 }
 
 func splitLine(b []byte) ([]byte, []byte) {
