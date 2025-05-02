@@ -6,7 +6,7 @@ run:
 	@./RDB
 
 build:
-	go build
+	go build -tags debug
 
 test:
 	python3 -m unittest tests/*_test.py

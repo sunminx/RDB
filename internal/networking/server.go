@@ -8,7 +8,10 @@ import (
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
+	"github.com/sunminx/RDB/internal/debug"
 )
+
+var assert = debug.Assert
 
 type Server struct {
 	gnet.BuiltinEventEngine
