@@ -35,6 +35,7 @@ type Server struct {
 	RunnableClientCh chan *Client
 	CmdLock          sync.RWMutex
 	UnlockNotice     chan struct{}
+	RdbVersion       int
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {

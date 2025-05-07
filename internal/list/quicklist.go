@@ -37,7 +37,7 @@ func (l *Quicklist) ReplaceAtIndex(index int64, entry []byte) {
 
 	node := l.head
 	for {
-		var step int64 = util.CondInt64(index > math.MaxInt16, math.MaxInt16, index)
+		var step int64 = util.Cond(index > math.MaxInt16, math.MaxInt16, index)
 		if int16(step) < node.cnt {
 			break
 		}
@@ -219,8 +219,8 @@ func (l *Quicklist) remove(where int8, num, skipnum int64) int64 {
 		node = l.tail
 	}
 	for num > 0 {
-		removenum = int16(util.CondInt64(num > math.MaxInt16, math.MaxInt16, num))
-		skipenum = int16(util.CondInt64(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
+		removenum = int16(util.Cond(num > math.MaxInt16, math.MaxInt16, num))
+		skipenum = int16(util.Cond(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
 		if where == quicklistHead {
 			neighborNode = node.next
 			removednum, skipednum, pass = node.zl.RemoveHead(removenum, skipenum)

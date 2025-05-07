@@ -36,6 +36,7 @@ type dictable interface {
 	GetRandomKey() Entry
 	Used() int
 	Size() int
+	Iterator() <-chan Entry
 }
 
 func newSdb(id int) *sdb {
@@ -119,4 +120,15 @@ func (sdb *sdb) syncDel(key string) bool {
 		_ = sdb.expires.Del(key)
 	}
 	return sdb.dict.Del(key)
+}
+
+func (sdb *sdb) Iterator() <-chan Entry {
+	ch := make(chan Entry)
+	go func() {
+		defer close(ch)
+		for entry := range sdb.dict.Iterator() {
+			ch <- entry
+		}
+	}()
+	return ch
 }

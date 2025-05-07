@@ -97,3 +97,14 @@ func (d *MapDict) Used() int {
 func (d *MapDict) Size() int {
 	return 0
 }
+
+func (d *MapDict) Iterator() <-chan Entry {
+	ch := make(chan Entry)
+	go func() {
+		defer close(ch)
+		for k, v := range d.dict {
+			ch <- Entry{k, v}
+		}
+	}()
+	return ch
+}

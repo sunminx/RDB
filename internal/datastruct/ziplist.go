@@ -568,7 +568,7 @@ func (zl *Ziplist) offsetTailSkipN(n int16) int32 {
 }
 
 func (zl *Ziplist) removeAll(num int16) (int16, bool) {
-	num = util.CondInt16(num > zl.Zllen(), zl.Zllen(), num)
+	num = util.Cond(num > zl.Zllen(), zl.Zllen(), num)
 	if num == zl.Zllen() {
 		zl = NewZiplist()
 		return num, true

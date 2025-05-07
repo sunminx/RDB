@@ -98,3 +98,8 @@ func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 func (db *DB) tryMergeSdb() error {
 	return nil
 }
+
+func (db *DB) Iterator() <-chan Entry {
+	// The data is always in Database 0.
+	return db.sdbs[0].Iterator()
+}
