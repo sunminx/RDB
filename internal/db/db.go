@@ -99,7 +99,7 @@ func (db *DB) tryMergeSdb() error {
 	return nil
 }
 
-func (db *DB) Iterator() <-chan Entry {
+func (db *DB) Iterator() <-chan DBEntry {
 	// The data is always in Database 0.
 	return db.sdbs[0].Iterator()
 }

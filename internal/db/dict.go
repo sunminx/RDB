@@ -19,16 +19,12 @@ func NewMap() *MapDict {
 }
 
 type Entry struct {
-	key string
-	val *obj.Robj
-}
-
-func (e *Entry) Key() string {
-	return e.key
+	Key string
+	Val *obj.Robj
 }
 
 func (e *Entry) TimeDurationVal() time.Duration {
-	t, ok := e.val.Val().(int64)
+	t, ok := e.Val.Val().(int64)
 	if !ok {
 		return time.Duration(0)
 	}
@@ -98,12 +94,12 @@ func (d *MapDict) Size() int {
 	return 0
 }
 
-func (d *MapDict) Iterator() <-chan Entry {
-	ch := make(chan Entry)
+func (d *MapDict) Iterator() <-chan *Entry {
+	ch := make(chan *Entry)
 	go func() {
 		defer close(ch)
 		for k, v := range d.dict {
-			ch <- Entry{k, v}
+			ch <- &Entry{k, v}
 		}
 	}()
 	return ch

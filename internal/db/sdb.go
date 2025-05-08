@@ -36,7 +36,7 @@ type dictable interface {
 	GetRandomKey() Entry
 	Used() int
 	Size() int
-	Iterator() <-chan Entry
+	Iterator() <-chan *Entry
 }
 
 func newSdb(id int) *sdb {
@@ -97,11 +97,10 @@ const (
 )
 
 func (sdb *sdb) activeExpireCycleTryExpire(entry Entry, now time.Time) bool {
-	key := entry.Key()
 	expire := entry.TimeDurationVal()
 	// expired
 	if now.UnixMilli() > int64(expire) {
-		return sdb.syncDel(key)
+		return sdb.syncDel(entry.Key)
 	}
 	return false
 }
@@ -122,12 +121,22 @@ func (sdb *sdb) syncDel(key string) bool {
 	return sdb.dict.Del(key)
 }
 
-func (sdb *sdb) Iterator() <-chan Entry {
-	ch := make(chan Entry)
+type DBEntry struct {
+	*Entry
+	Expire int64
+}
+
+func (sdb *sdb) Iterator() <-chan DBEntry {
+	ch := make(chan DBEntry)
 	go func() {
 		defer close(ch)
 		for entry := range sdb.dict.Iterator() {
-			ch <- entry
+			dbEntry := DBEntry{entry, -1}
+			v, ok := sdb.expires.FetchValue(entry.Key)
+			if !ok {
+				dbEntry.Expire = v.Val().(int64)
+			}
+			ch <- dbEntry
 		}
 	}()
 	return ch
