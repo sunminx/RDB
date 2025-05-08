@@ -127,14 +127,12 @@ func (rdb *Rdber) saveObject(val *obj.Robj) bool {
 
 func (rdb *Rdber) saveStringObject(val *obj.Robj) bool {
 	if val.CheckEncoding(obj.ObjEncodingInt) {
-		// todo
 		n := val.Val().(int64)
 		enc := encodeInt(n)
-		if len(enc) > 0 {
-			return rdb.writeRaw(enc)
+		if len(enc) == 0 {
+			enc = util.Int64ToBytes(n)
 		}
-
-		return saved
+		return rdb.writeRaw(enc)
 	} else if val.CheckEncoding(obj.ObjEncodingRaw) {
 		rdb.saveRawString(val.Val().(string))
 		return saved
