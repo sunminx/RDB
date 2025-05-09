@@ -59,6 +59,10 @@ func (zp *Zipmap) exists(field []byte) bool {
 	return idx < zp.Zllen()
 }
 
+func (zp *Zipmap) Len() int16 {
+	return zp.hlen()
+}
+
 func (zp *Zipmap) hlen() int16 {
 	return zp.Zllen() / 2
 }

@@ -10,9 +10,11 @@ import (
 	"time"
 	"unsafe"
 
+	ds "github.com/sunminx/RDB/internal/datastruct"
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/hash"
 	"github.com/sunminx/RDB/internal/list"
+	"github.com/sunminx/RDB/internal/networking"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/rio"
 	"github.com/sunminx/RDB/pkg/util"
@@ -23,6 +25,8 @@ type Rdber struct {
 	wr    *rio.Writer
 	info  RdbInfo
 	cksum int64
+	db    *db.DB
+	srv   *networking.Server
 }
 
 type RdbInfo struct {
@@ -67,10 +71,8 @@ func (rdb *Rdber) saveKeyValPair(key string, val *obj.Robj, expire int64) bool {
 	return saved
 }
 
-type rdbType uint8
-
 const (
-	rdbTypeString rdbType = iota
+	rdbTypeString uint8 = iota
 	rdbTypeList
 	rdbTypeSet
 	rdbTypeZset
@@ -149,6 +151,9 @@ const (
 	rdbEncLzf   = 3
 )
 
+// encodeInt is only used for encoding strings that can be represented as integers.
+// which is different from the encoding logic for storing numerical values.
+// The first two bit is always rdbEncVal
 func encodeInt(n int64) []byte {
 	var enc []byte
 	if n >= math.MinInt8 && n <= math.MaxInt8 {
@@ -174,12 +179,12 @@ func encodeInt(n int64) []byte {
 func (rdb *Rdber) saveListObject(val *obj.Robj) bool {
 	if val.CheckEncoding(obj.ObjEncodingQuicklist) {
 		ql := val.Val().(*list.Quicklist)
-		rdb.saveLen(ql.Len())
+		rdb.saveLen(uint64(ql.Len()))
 		node := ql.Head()
 		for node != nil {
 			list := node.List()
 			// todo
-			rdb.writeRaw(list)
+			rdb.writeRaw([]byte(*list))
 			node = node.Next()
 		}
 		return saved
@@ -190,35 +195,34 @@ func (rdb *Rdber) saveListObject(val *obj.Robj) bool {
 func (rdb *Rdber) saveHashObject(val *obj.Robj) bool {
 	if val.CheckEncoding(obj.ObjEncodingZipmap) {
 		zm := val.Val().(*hash.Zipmap)
-		rdb.writeRaw(zm)
+		rdb.saveLen(uint64(zm.Len()))
+		rdb.writeRaw([]byte(*zm.Ziplist))
 	}
 	return nosave
 }
 
-type Opcode uint8
-
 const (
-	RdbOpcodeModuleAux    Opcode = iota + 247 /* module auxiliary data. */
-	RdbOpcodeIdle                             /* lru idle time. */
-	RdbOpcodeFreq                             /* lfu frequency. */
-	RdbOpcodeAux                              /* rdb aux field. */
-	RdbOpcodeResizedb                         /* hash table resize hint. */
-	RdbOpcodeExpiretimeMs                     /* expire time in milliseconds. */
-	RdbOpcodeExpiretime                       /* old expire time in seconds. */
-	RdbOpcodeSelectdb                         /* db number of the following keys. */
-	RdbOpcodeEOF
+	rdbOpcodeModuleAux    uint8 = iota + 247 /* module auxiliary data. */
+	rdbOpcodeIdle                            /* lru idle time. */
+	rdbOpcodeFreq                            /* lfu frequency. */
+	rdbOpcodeAux                             /* rdb aux field. */
+	rdbOpcodeResizedb                        /* hash table resize hint. */
+	rdbOpcodeExpiretimeMs                    /* expire time in milliseconds. */
+	rdbOpcodeExpiretime                      /* old expire time in seconds. */
+	rdbOpcodeSelectdb                        /* db number of the following keys. */
+	rdbOpcodeEOF
 )
 
 func (rdb *Rdber) saveMillisencondTime(t int64) bool {
-	var buf bytes.Buffer
+	buf := new(bytes.Buffer)
 	binary.Write(buf, binary.LittleEndian, t)
-	rdb.saveType(RdbOpcodeExpiretimeMs)
+	rdb.saveType(rdbOpcodeExpiretimeMs)
 	rdb.writeRaw(buf.Bytes())
 	return saved
 }
 
 func (rdb *Rdber) saveSelectDBNum(num uint64) bool {
-	if !rdb.saveType(RdbOpcodeSelectdb) {
+	if !rdb.saveType(rdbOpcodeSelectdb) {
 		return false
 	}
 	return rdb.saveLen(num)
@@ -242,7 +246,7 @@ func (rdb *Rdber) saveAuxFieldStrInt(key string, val int64) bool {
 }
 
 func (rdb *Rdber) saveAuxField(key, val string) bool {
-	if !rdb.saveType(RdbOpcodeAux) {
+	if !rdb.saveType(rdbOpcodeAux) {
 		return false
 	}
 	if !rdb.saveRawString(key) {
@@ -294,13 +298,17 @@ func (rdb *Rdber) saveLen(ln uint64) bool {
 }
 
 func (rdb *Rdber) saveRawString(str string) bool {
+	ln := uint64(len(str))
+	if !rdb.saveLen(ln) {
+		return nosave
+	}
 	return rdb.writeRaw([]byte(str))
 }
 
 func (rdb *Rdber) saveCksum() bool {
 	sz := unsafe.Sizeof(rdb.cksum)
 	buf := make([]byte, sz)
-	*(*int64)(unsafe.Pointer(&buf[0])) = n
+	*(*int64)(unsafe.Pointer(&buf[0])) = rdb.cksum
 	rdb.writeRaw(buf)
 	return true
 }
@@ -308,4 +316,262 @@ func (rdb *Rdber) saveCksum() bool {
 func (rdb *Rdber) writeRaw(p []byte) bool {
 	n, err := rdb.wr.Write(p)
 	return err == nil && len(p) == n
+}
+
+func (rdb *Rdber) Load() error {
+	p := make([]byte, 9, 9)
+	if rdb.readRaw(p) != 9 {
+		return errors.New("read magic number error")
+	}
+	if string(p[:5]) != "REDIS" {
+		return errors.New("wrong signature trying to load DB from file")
+	}
+	ver, err := strconv.Atoi(string(p[5:]))
+	if err != nil {
+		return errors.New("RDB format version not found")
+	}
+	if ver < 1 || ver > rdb.srv.RdbVersion {
+		return fmt.Errorf("can't handle RDB format version %d", ver)
+	}
+
+	var expireTime int64 = -1
+	var now = time.Now().UnixMilli()
+	for {
+		loadOpcode := true
+		typ := rdb.loadType()
+		switch typ {
+		case rdbOpcodeExpiretime:
+		default:
+			loadOpcode = false
+		}
+
+		if !loadOpcode {
+			o := rdb.genericLoadStringObject()
+			if o == nil {
+				goto rerr
+			}
+			k, ok := o.([]byte)
+			if !ok {
+				goto rerr
+			}
+			key := string(k)
+			val := rdb.loadObject(typ)
+			if val == nil {
+				goto rerr
+			}
+			if expireTime != -1 && expireTime < now {
+				continue
+			}
+			rdb.db.SetKey(key, val)
+			if expireTime != -1 {
+				rdb.db.SetExpire(key, time.Duration(expireTime))
+			}
+
+			expireTime = -1
+		}
+	}
+rerr:
+	return nil
+}
+
+func (rdb *Rdber) loadObject(typ uint8) *obj.Robj {
+	switch typ {
+	case rdbTypeString:
+		return rdb.loadStringObject()
+	case rdbTypeList:
+		return rdb.loadListObject()
+	case rdbTypeHash:
+		return rdb.loadHashObject()
+	default:
+	}
+	return nil
+}
+
+func (rdb *Rdber) loadHashObject() *obj.Robj {
+	ln := rdb.loadLen(nil)
+	if ln == rdbLenErr {
+		return nil
+	}
+
+	v := rdb.genericLoadStringObject()
+	zl := ds.Ziplist(v.([]byte))
+	zm := hash.Zipmap{&zl}
+	robj := obj.NewRobj(zm)
+	robj.SetType(obj.ObjHash)
+	robj.SetEncoding(obj.ObjEncodingZipmap)
+	return robj
+}
+
+func (rdb *Rdber) loadListObject() *obj.Robj {
+	ln := rdb.loadLen(nil)
+	if ln == rdbLenErr {
+		return nil
+	}
+
+	ql := list.NewQuicklist()
+	var i uint64
+	for ; i < ln; i++ {
+		v := rdb.genericLoadStringObject()
+		zl := ds.Ziplist(v.([]byte))
+		node := list.CreateQuicklistNode(&zl)
+		ql.Link(node)
+	}
+	robj := obj.NewRobj(ql)
+	robj.SetType(obj.ObjList)
+	robj.SetEncoding(obj.ObjEncodingQuicklist)
+	return robj
+}
+
+func (rdb *Rdber) loadStringObject() *obj.Robj {
+	v := rdb.genericLoadStringObject()
+	if v == nil {
+		return nil
+	}
+
+	var robj *obj.Robj
+	switch v.(type) {
+	case int64:
+		robj = obj.NewRobj(v)
+		robj.SetType(obj.ObjString)
+		robj.SetEncoding(obj.ObjEncodingInt)
+	case []byte:
+		robj = obj.NewRobj(string(v.([]byte)))
+		robj.SetType(obj.ObjString)
+		robj.SetEncoding(obj.ObjEncodingRaw)
+	default:
+	}
+	return robj
+}
+
+func (rdb *Rdber) genericLoadStringObject() any {
+	var ln int
+	var isEncoded bool
+
+	ln = int(rdb.loadLen(&isEncoded))
+	if isEncoded {
+		v := rdb.loadStringIntObject(uint8(ln))
+		if v == -1 {
+			goto rerr
+		}
+		return v
+	} else {
+		p := make([]byte, ln, ln)
+		if rdb.readRaw(p) != ln {
+			goto rerr
+		}
+		return p
+	}
+rerr:
+	return nil
+}
+
+// loadStringIntObject is the inverse operation of encodeInt.
+func (rdb *Rdber) loadStringIntObject(typ uint8) int64 {
+	var n int64
+	var p []byte
+	if typ == rdbEncInt8 {
+		p = make([]byte, 1, 1)
+		if rdb.readRaw(p) != 1 {
+			goto err
+		}
+		n = int64(p[1])
+	} else if typ == rdbEncInt16 {
+		p = make([]byte, 2, 2)
+		if rdb.readRaw(p) != 2 {
+			goto err
+		}
+		n = int64(p[1]) | int64(p[2]<<8)
+	} else if typ == rdbEncInt32 {
+		p = make([]byte, 4, 4)
+		if rdb.readRaw(p) != 4 {
+			goto err
+		}
+		n = int64(p[1]) | int64(p[2]<<8) | int64(p[2]<<16) | int64(p[3]<<24)
+	}
+	return n
+err:
+	return -1
+}
+
+const rdbLenErr = math.MaxUint64
+
+func (rdb *Rdber) loadLen(isEncoded *bool) uint64 {
+	ln, ok := rdb.genericLoadLen()
+	if isEncoded != nil {
+		*isEncoded = ok
+	}
+	return ln
+}
+
+// genericLoadLen
+func (rdb *Rdber) genericLoadLen() (uint64, bool) {
+	var n uint64
+	var isEncoded bool
+
+	p := make([]byte, 1, 1)
+	if rdb.readRaw(p) != 1 {
+		goto rerr
+	}
+	switch uint8((p[0] & 0xc0) >> 6) {
+	case rdbEncval:
+		isEncoded = true
+		// In this case, the last six bits
+		// of the first byte are returned which the encoding type.
+		n = uint64(p[0] & 0x3f)
+	case rdb_6bitlen:
+		n = uint64(p[0] & 0x3f)
+	case rdb_14bitlen:
+		p = append(p, '0')
+		if rdb.readRaw(p[1:]) != 1 {
+			goto rerr
+		}
+		n = uint64((p[0]&0x3f)<<8 | p[1])
+	case rdb_32bitlen:
+		p = make([]byte, 4, 4)
+		if rdb.readRaw(p) != 4 {
+			goto rerr
+		}
+		n = uint64(binary.BigEndian.Uint32(p))
+	case rdb_64bitlen:
+		p = make([]byte, 8, 8)
+		if rdb.readRaw(p) != 8 {
+			goto rerr
+		}
+		n = binary.BigEndian.Uint64(p)
+	default:
+	}
+	return n, isEncoded
+rerr:
+	return rdbLenErr, false
+}
+
+func (rdb *Rdber) loadTime() int32 {
+	var t int32
+	err := binary.Read(rdb.rd, binary.LittleEndian, &t)
+	if err != nil {
+		return -1
+	}
+	return t
+}
+
+func (rdb *Rdber) loadMillisecondTime() int64 {
+	var t int64
+	err := binary.Read(rdb.rd, binary.LittleEndian, &t)
+	if err != nil {
+		return -1
+	}
+	return t
+}
+
+func (rdb *Rdber) loadType() uint8 {
+	p := make([]byte, 1, 1)
+	if rdb.readRaw(p) != 1 {
+		return 0
+	}
+	return p[0]
+}
+
+func (rdb *Rdber) readRaw(p []byte) int {
+	n, _ := rdb.rd.Read(p)
+	return n
 }

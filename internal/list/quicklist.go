@@ -113,6 +113,22 @@ func (l *Quicklist) getNodeOrCreateIfNeeded(entrylen int32,
 	return node
 }
 
+func (l *Quicklist) Link(node *QuicklistNode) {
+	if l.tail == nil {
+		l.tail = node
+	} else {
+		tail := l.tail
+		l.tail = node
+		tail.next = node
+		node.prev = tail
+	}
+	if l.head == nil {
+		l.head = node
+	}
+	l.ln += 1
+	l.cnt += int64(node.cnt)
+}
+
 type QuicklistNode struct {
 	prev    *QuicklistNode
 	next    *QuicklistNode
@@ -130,6 +146,14 @@ func newQuicklistNode() *QuicklistNode {
 		cnt:     zl.Zllen(),
 		fill:    2,
 	}
+}
+
+func CreateQuicklistNode(zl *ds.Ziplist) *QuicklistNode {
+	node := newQuicklistNode()
+	node.zl = zl
+	node.zlbytes = zl.Zlbytes()
+	node.cnt = zl.Zllen()
+	return node
 }
 
 func (n *QuicklistNode) List() *ds.Ziplist {
