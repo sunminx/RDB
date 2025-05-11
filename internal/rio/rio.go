@@ -47,14 +47,16 @@ type Writer struct {
 type updateCksumFn func(*Writer, []byte, int)
 
 func NewWriter(name string) (*Writer, error) {
-	file, err := os.Open(name)
+	file, err := os.Create(name)
 	if err != nil {
 		return nil, ErrCannotOpenFile
 	}
 	wr := bufio.NewWriter(file)
 	return &Writer{
-		wr:   wr,
-		name: name,
+		wr:              wr,
+		name:            name,
+		processBytes:    0,
+		maxProcessChunk: 1024,
 	}, nil
 }
 
@@ -67,6 +69,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 			w.updateCksumFn(w, p, chunk)
 		}
 		n, err := w.wr.Write(p)
+		w.wr.Flush()
 		if err != nil {
 			return n, err
 		}

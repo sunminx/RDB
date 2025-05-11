@@ -1,3 +1,4 @@
 *.swp
 RDB
 tests/__pycache__/
+internal/dump/rdb.file

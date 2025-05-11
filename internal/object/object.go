@@ -26,6 +26,10 @@ type Robj struct {
 	val      any
 }
 
+func New(val any, typ RobjType, encoding EncodingType) *Robj {
+	return &Robj{typ, encoding, val}
+}
+
 func NewRobj(val any) *Robj {
 	return &Robj{val: val}
 }
@@ -40,6 +44,10 @@ func (o *Robj) SetVal(val any) {
 
 func (o *Robj) SetEncoding(encoding EncodingType) {
 	o.encoding = encoding
+}
+
+func (o *Robj) Encoding() EncodingType {
+	return o.encoding
 }
 
 func (o *Robj) SetType(_type RobjType) {

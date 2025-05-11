@@ -23,18 +23,13 @@ import (
 type Rdber struct {
 	rd    *rio.Reader
 	wr    *rio.Writer
-	info  RdbInfo
 	cksum int64
 	db    *db.DB
 	srv   *networking.Server
 }
 
-type RdbInfo struct {
-	Version int
-}
-
 func (rdb *Rdber) Save(db *db.DB) error {
-	if !rdb.writeRaw([]byte(fmt.Sprintf("REDIS%04d", rdb.info.Version))) {
+	if !rdb.writeRaw([]byte(fmt.Sprintf("REDIS%04d", rdb.srv.RdbVersion))) {
 		return errors.New("write rdb version error")
 	}
 	if !rdb.saveAuxFields() {
@@ -123,8 +118,8 @@ func (rdb *Rdber) saveObject(val *obj.Robj) bool {
 	case obj.ObjHash:
 		return rdb.saveHashObject(val)
 	default:
+		return nosave
 	}
-	return nosave
 }
 
 func (rdb *Rdber) saveStringObject(val *obj.Robj) bool {
@@ -169,9 +164,9 @@ func encodeInt(n int64) []byte {
 		enc = make([]byte, 5, 5)
 		enc[0] = (rdbEncval << 6) | rdbEncInt32
 		enc[1] = byte(n & 0xff)
-		enc[2] = byte((n >> 8) & 0xff)
-		enc[3] = byte((n >> 16) & 0xff)
-		enc[4] = byte((n >> 24) & 0xff)
+		enc[2] = byte(n>>8) & 0xff
+		enc[3] = byte(n>>16) & 0xff
+		enc[4] = byte(n>>24) & 0xff
 	}
 	return enc
 }
@@ -184,7 +179,7 @@ func (rdb *Rdber) saveListObject(val *obj.Robj) bool {
 		for node != nil {
 			list := node.List()
 			// todo
-			rdb.writeRaw([]byte(*list))
+			rdb.saveRawString(string([]byte(*list)))
 			node = node.Next()
 		}
 		return saved
@@ -196,7 +191,7 @@ func (rdb *Rdber) saveHashObject(val *obj.Robj) bool {
 	if val.CheckEncoding(obj.ObjEncodingZipmap) {
 		zm := val.Val().(*hash.Zipmap)
 		rdb.saveLen(uint64(zm.Len()))
-		rdb.writeRaw([]byte(*zm.Ziplist))
+		return rdb.saveRawString(string([]byte(*zm.Ziplist)))
 	}
 	return nosave
 }
@@ -392,10 +387,9 @@ func (rdb *Rdber) loadHashObject() *obj.Robj {
 	if ln == rdbLenErr {
 		return nil
 	}
-
 	v := rdb.genericLoadStringObject()
 	zl := ds.Ziplist(v.([]byte))
-	zm := hash.Zipmap{&zl}
+	zm := &hash.Zipmap{Ziplist: &zl}
 	robj := obj.NewRobj(zm)
 	robj.SetType(obj.ObjHash)
 	robj.SetEncoding(obj.ObjEncodingZipmap)
@@ -407,7 +401,6 @@ func (rdb *Rdber) loadListObject() *obj.Robj {
 	if ln == rdbLenErr {
 		return nil
 	}
-
 	ql := list.NewQuicklist()
 	var i uint64
 	for ; i < ln; i++ {
@@ -427,7 +420,6 @@ func (rdb *Rdber) loadStringObject() *obj.Robj {
 	if v == nil {
 		return nil
 	}
-
 	var robj *obj.Robj
 	switch v.(type) {
 	case int64:
@@ -444,25 +436,21 @@ func (rdb *Rdber) loadStringObject() *obj.Robj {
 }
 
 func (rdb *Rdber) genericLoadStringObject() any {
-	var ln int
 	var isEncoded bool
-
-	ln = int(rdb.loadLen(&isEncoded))
+	ln := int(rdb.loadLen(&isEncoded))
 	if isEncoded {
 		v := rdb.loadStringIntObject(uint8(ln))
 		if v == -1 {
-			goto rerr
+			return nil
 		}
 		return v
 	} else {
 		p := make([]byte, ln, ln)
 		if rdb.readRaw(p) != ln {
-			goto rerr
+			return nil
 		}
 		return p
 	}
-rerr:
-	return nil
 }
 
 // loadStringIntObject is the inverse operation of encodeInt.
@@ -474,19 +462,20 @@ func (rdb *Rdber) loadStringIntObject(typ uint8) int64 {
 		if rdb.readRaw(p) != 1 {
 			goto err
 		}
-		n = int64(p[1])
+		n = int64(p[0])
 	} else if typ == rdbEncInt16 {
 		p = make([]byte, 2, 2)
 		if rdb.readRaw(p) != 2 {
 			goto err
 		}
-		n = int64(p[1]) | int64(p[2]<<8)
+		n = int64(p[1]) | int64(p[2])<<8
 	} else if typ == rdbEncInt32 {
 		p = make([]byte, 4, 4)
 		if rdb.readRaw(p) != 4 {
 			goto err
 		}
-		n = int64(p[1]) | int64(p[2]<<8) | int64(p[2]<<16) | int64(p[3]<<24)
+		v := uint32(p[0]) | uint32(p[1])<<8 | uint32(p[2])<<16 | uint32(p[3])<<24
+		n = int64(v)
 	}
 	return n
 err:
@@ -510,39 +499,37 @@ func (rdb *Rdber) genericLoadLen() (uint64, bool) {
 
 	p := make([]byte, 1, 1)
 	if rdb.readRaw(p) != 1 {
-		goto rerr
+		return rdbLenErr, isEncoded
 	}
-	switch uint8((p[0] & 0xc0) >> 6) {
-	case rdbEncval:
+
+	typ := p[0] & 0xc0 >> 6
+	if typ == rdbEncval {
+		// In this case, the last six bits of the
+		// first byte are returned which the encoding type.
 		isEncoded = true
-		// In this case, the last six bits
-		// of the first byte are returned which the encoding type.
-		n = uint64(p[0] & 0x3f)
-	case rdb_6bitlen:
-		n = uint64(p[0] & 0x3f)
-	case rdb_14bitlen:
+		n = uint64(p[0]) & 0x3f
+	} else if typ == rdb_6bitlen {
+		n = uint64(p[0]) & 0x3f
+	} else if typ == rdb_14bitlen {
 		p = append(p, '0')
 		if rdb.readRaw(p[1:]) != 1 {
-			goto rerr
+			return rdbLenErr, false
 		}
-		n = uint64((p[0]&0x3f)<<8 | p[1])
-	case rdb_32bitlen:
+		n = uint64(p[0])&0x3f<<8 | uint64(p[1])
+	} else if p[0] == rdb_32bitlen {
 		p = make([]byte, 4, 4)
 		if rdb.readRaw(p) != 4 {
-			goto rerr
+			return rdbLenErr, false
 		}
 		n = uint64(binary.BigEndian.Uint32(p))
-	case rdb_64bitlen:
+	} else if p[0] == rdb_64bitlen {
 		p = make([]byte, 8, 8)
 		if rdb.readRaw(p) != 8 {
-			goto rerr
+			return rdbLenErr, false
 		}
 		n = binary.BigEndian.Uint64(p)
-	default:
 	}
 	return n, isEncoded
-rerr:
-	return rdbLenErr, false
 }
 
 func (rdb *Rdber) loadTime() int32 {
