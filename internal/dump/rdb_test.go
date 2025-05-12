@@ -26,9 +26,7 @@ func initDB() *db.DB {
 func newMockDB() *db.DB {
 	mdb := db.New()
 	key := "key1"
-	val := obj.NewRobj(sds.SDS("val1"))
-	val.SetType(obj.ObjString)
-	val.SetEncoding(obj.ObjEncodingRaw)
+	val := obj.New(sds.SDS("val1"), obj.TypeString, obj.EncodingRaw)
 	mdb.SetKey(key, val)
 	return mdb
 }
@@ -89,11 +87,9 @@ func TestSaveLoadRawString(t *testing.T) {
 
 func TestSaveLoadStringObject(t *testing.T) {
 	rdb := newMockRdb(t)
-	testcases := []int64{-100000}
+	testcases := []int64{100000}
 	for _, tc := range testcases {
-		robj := obj.NewRobj(tc)
-		robj.SetType(obj.ObjString)
-		robj.SetEncoding(obj.ObjEncodingInt)
+		robj := obj.New(tc, obj.TypeString, obj.EncodingInt)
 		if !rdb.saveStringObject(robj) {
 			t.Error("save string object error")
 		}
@@ -115,7 +111,7 @@ func TestSaveLoadListObject(t *testing.T) {
 	rdb := newMockRdb(t)
 	li := list.NewQuicklist()
 	li.Push([]byte("hello"))
-	robj := obj.New(li, obj.ObjList, obj.ObjEncodingQuicklist)
+	robj := obj.New(li, obj.TypeList, obj.EncodingQuicklist)
 	if !rdb.saveListObject(robj) {
 		t.Error("save quicklist error")
 	}

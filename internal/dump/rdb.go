@@ -91,31 +91,31 @@ const (
 
 func (rdb *Rdber) saveObjectType(val *obj.Robj) bool {
 	switch val.Type() {
-	case obj.ObjString:
+	case obj.TypeString:
 		rdb.saveType(rdbTypeString)
 		return saved
-	case obj.ObjList:
-		if val.CheckEncoding(obj.ObjEncodingQuicklist) {
+	case obj.TypeList:
+		if val.CheckEncoding(obj.EncodingQuicklist) {
 			rdb.saveType(rdbTypeListQuicklist)
 		}
 		return saved
-	case obj.ObjHash:
-		if val.CheckEncoding(obj.ObjEncodingZipmap) {
+	case obj.TypeHash:
+		if val.CheckEncoding(obj.EncodingZipmap) {
 			rdb.saveType(rdbTypeHashZipmap)
 		}
 		return saved
 	default:
+		return nosave
 	}
-	return nosave
 }
 
 func (rdb *Rdber) saveObject(val *obj.Robj) bool {
 	switch val.Type() {
-	case obj.ObjString:
+	case obj.TypeString:
 		return rdb.saveStringObject(val)
-	case obj.ObjList:
+	case obj.TypeList:
 		return rdb.saveListObject(val)
-	case obj.ObjHash:
+	case obj.TypeHash:
 		return rdb.saveHashObject(val)
 	default:
 		return nosave
@@ -123,14 +123,14 @@ func (rdb *Rdber) saveObject(val *obj.Robj) bool {
 }
 
 func (rdb *Rdber) saveStringObject(val *obj.Robj) bool {
-	if val.CheckEncoding(obj.ObjEncodingInt) {
+	if val.CheckEncoding(obj.EncodingInt) {
 		n := val.Val().(int64)
 		enc := encodeInt(n)
 		if len(enc) == 0 {
 			enc = util.Int64ToBytes(n)
 		}
 		return rdb.writeRaw(enc)
-	} else if val.CheckEncoding(obj.ObjEncodingRaw) {
+	} else if val.CheckEncoding(obj.EncodingRaw) {
 		rdb.saveRawString(val.Val().(string))
 		return saved
 	}
@@ -172,14 +172,18 @@ func encodeInt(n int64) []byte {
 }
 
 func (rdb *Rdber) saveListObject(val *obj.Robj) bool {
-	if val.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if val.CheckEncoding(obj.EncodingQuicklist) {
 		ql := val.Val().(*list.Quicklist)
 		rdb.saveLen(uint64(ql.Len()))
 		node := ql.Head()
 		for node != nil {
-			list := node.List()
-			// todo
-			rdb.saveRawString(string([]byte(*list)))
+			li := node.List()
+			if !rdb.saveLen(uint64(li.Zlbytes())) {
+				return nosave
+			}
+			if !rdb.writeRaw([]byte(*li)) {
+				return nosave
+			}
 			node = node.Next()
 		}
 		return saved
@@ -188,10 +192,15 @@ func (rdb *Rdber) saveListObject(val *obj.Robj) bool {
 }
 
 func (rdb *Rdber) saveHashObject(val *obj.Robj) bool {
-	if val.CheckEncoding(obj.ObjEncodingZipmap) {
+	if val.CheckEncoding(obj.EncodingZipmap) {
 		zm := val.Val().(*hash.Zipmap)
-		rdb.saveLen(uint64(zm.Len()))
-		return rdb.saveRawString(string([]byte(*zm.Ziplist)))
+		if !rdb.saveLen(uint64(zm.Len())) {
+			return nosave
+		}
+		if !rdb.saveLen(uint64(zm.Zlbytes())) {
+			return nosave
+		}
+		return rdb.writeRaw([]byte(*zm.Ziplist))
 	}
 	return nosave
 }
@@ -282,14 +291,15 @@ func (rdb *Rdber) saveLen(ln uint64) bool {
 		binary.BigEndian.PutUint32(buf, uint32(ln))
 		return rdb.writeRaw(buf)
 	default:
-		buf[0] = rdb_64bitlen
-		if !rdb.writeRaw(buf) {
-			return false
-		}
-		buf = make([]byte, 8, 8)
-		binary.BigEndian.PutUint64(buf, ln)
-		return rdb.writeRaw(buf)
 	}
+
+	buf[0] = rdb_64bitlen
+	if !rdb.writeRaw(buf) {
+		return false
+	}
+	buf = make([]byte, 8, 8)
+	binary.BigEndian.PutUint64(buf, ln)
+	return rdb.writeRaw(buf)
 }
 
 func (rdb *Rdber) saveRawString(str string) bool {
@@ -378,8 +388,8 @@ func (rdb *Rdber) loadObject(typ uint8) *obj.Robj {
 	case rdbTypeHash:
 		return rdb.loadHashObject()
 	default:
+		return nil
 	}
-	return nil
 }
 
 func (rdb *Rdber) loadHashObject() *obj.Robj {
@@ -390,10 +400,7 @@ func (rdb *Rdber) loadHashObject() *obj.Robj {
 	v := rdb.genericLoadStringObject()
 	zl := ds.Ziplist(v.([]byte))
 	zm := &hash.Zipmap{Ziplist: &zl}
-	robj := obj.NewRobj(zm)
-	robj.SetType(obj.ObjHash)
-	robj.SetEncoding(obj.ObjEncodingZipmap)
-	return robj
+	return obj.New(zm, obj.TypeHash, obj.EncodingZipmap)
 }
 
 func (rdb *Rdber) loadListObject() *obj.Robj {
@@ -409,10 +416,7 @@ func (rdb *Rdber) loadListObject() *obj.Robj {
 		node := list.CreateQuicklistNode(&zl)
 		ql.Link(node)
 	}
-	robj := obj.NewRobj(ql)
-	robj.SetType(obj.ObjList)
-	robj.SetEncoding(obj.ObjEncodingQuicklist)
-	return robj
+	return obj.New(ql, obj.TypeList, obj.EncodingQuicklist)
 }
 
 func (rdb *Rdber) loadStringObject() *obj.Robj {
@@ -420,19 +424,14 @@ func (rdb *Rdber) loadStringObject() *obj.Robj {
 	if v == nil {
 		return nil
 	}
-	var robj *obj.Robj
 	switch v.(type) {
 	case int64:
-		robj = obj.NewRobj(v)
-		robj.SetType(obj.ObjString)
-		robj.SetEncoding(obj.ObjEncodingInt)
+		return obj.New(v, obj.TypeString, obj.EncodingInt)
 	case []byte:
-		robj = obj.NewRobj(string(v.([]byte)))
-		robj.SetType(obj.ObjString)
-		robj.SetEncoding(obj.ObjEncodingRaw)
+		return obj.New(string(v.([]byte)), obj.TypeString, obj.EncodingRaw)
 	default:
+		return nil
 	}
-	return robj
 }
 
 func (rdb *Rdber) genericLoadStringObject() any {
@@ -535,27 +534,18 @@ func (rdb *Rdber) genericLoadLen() (uint64, bool) {
 func (rdb *Rdber) loadTime() int32 {
 	var t int32
 	err := binary.Read(rdb.rd, binary.LittleEndian, &t)
-	if err != nil {
-		return -1
-	}
-	return t
+	return util.Cond(err != nil, -1, t)
 }
 
 func (rdb *Rdber) loadMillisecondTime() int64 {
 	var t int64
 	err := binary.Read(rdb.rd, binary.LittleEndian, &t)
-	if err != nil {
-		return -1
-	}
-	return t
+	return util.Cond(err != nil, -1, t)
 }
 
 func (rdb *Rdber) loadType() uint8 {
 	p := make([]byte, 1, 1)
-	if rdb.readRaw(p) != 1 {
-		return 0
-	}
-	return p[0]
+	return util.Cond(rdb.readRaw(p) != 1, 0, p[0])
 }
 
 func (rdb *Rdber) readRaw(p []byte) int {
