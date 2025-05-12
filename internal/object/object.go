@@ -4,34 +4,30 @@ type RobjType int
 
 const (
 	UnknownType RobjType = iota
-	ObjString
-	ObjList
-	ObjHash
+	TypeString
+	TypeList
+	TypeHash
 )
 
 type EncodingType int
 
 const (
 	UnknownEncodingType EncodingType = iota
-	ObjEncodingInt
-	ObjEncodingRaw
-	ObjEncodingZiplist
-	ObjEncodingQuicklist
-	ObjEncodingZipmap
+	EncodingInt
+	EncodingRaw
+	EncodingZiplist
+	EncodingQuicklist
+	EncodingZipmap
 )
 
 type Robj struct {
-	_type    RobjType
+	typ      RobjType
 	encoding EncodingType
 	val      any
 }
 
 func New(val any, typ RobjType, encoding EncodingType) *Robj {
 	return &Robj{typ, encoding, val}
-}
-
-func NewRobj(val any) *Robj {
-	return &Robj{val: val}
 }
 
 func (o *Robj) Val() any {
@@ -50,20 +46,16 @@ func (o *Robj) Encoding() EncodingType {
 	return o.encoding
 }
 
-func (o *Robj) SetType(_type RobjType) {
-	o._type = _type
+func (o *Robj) SetType(typ RobjType) {
+	o.typ = typ
 }
 
 func (o *Robj) Type() RobjType {
-	return o._type
+	return o.typ
 }
 
-func (o *Robj) SDSEncodedObject() bool {
-	return o.encoding == ObjEncodingRaw
-}
-
-func (o *Robj) CheckType(_type RobjType) bool {
-	return o._type == _type
+func (o *Robj) CheckType(typ RobjType) bool {
+	return o.typ == typ
 }
 
 func (o *Robj) CheckEncoding(encoding EncodingType) bool {

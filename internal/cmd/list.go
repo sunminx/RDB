@@ -26,7 +26,7 @@ func pushGenericCommand(cli client, where int8) bool {
 	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
-		if !val.CheckType(obj.ObjList) {
+		if !val.CheckType(obj.TypeList) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
 			return ERR
 		}
@@ -64,7 +64,7 @@ func popGenericCommand(cli client, where int8) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(obj.ObjList) {
+	} else if !val.CheckType(obj.TypeList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -87,7 +87,7 @@ func LIndexCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(obj.ObjList) {
+	} else if !val.CheckType(obj.TypeList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -112,7 +112,7 @@ func LLenCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(obj.ObjList) {
+	} else if !val.CheckType(obj.TypeList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -127,7 +127,7 @@ func LTrimCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(obj.ObjList) {
+	} else if !val.CheckType(obj.TypeList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -155,7 +155,7 @@ func LSetCommand(cli client) bool {
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
-	} else if !val.CheckType(obj.ObjList) {
+	} else if !val.CheckType(obj.TypeList) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}

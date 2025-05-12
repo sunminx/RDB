@@ -17,70 +17,67 @@ type list interface {
 }
 
 func NewRobj(val any) *obj.Robj {
-	robj := obj.NewRobj(val)
-	robj.SetType(obj.ObjList)
-	robj.SetEncoding(obj.ObjEncodingQuicklist)
-	return robj
+	return obj.New(val, obj.TypeList, obj.EncodingQuicklist)
 }
 
 func Push(robj *obj.Robj, entry []byte) {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).Push(entry)
 	}
 	return
 }
 
 func PushLeft(robj *obj.Robj, entry []byte) {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).PushLeft(entry)
 	}
 	return
 }
 
 func Set(robj *obj.Robj, idx int64, entry []byte) {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).ReplaceAtIndex(idx, entry)
 	}
 	return
 }
 
 func Pop(robj *obj.Robj) {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).Pop()
 	}
 	return
 }
 
 func PopLeft(robj *obj.Robj) {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).PopLeft()
 	}
 	return
 }
 
 func Index(robj *obj.Robj, idx int64) ([]byte, bool) {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		return unwrap(robj).Index(idx)
 	}
 	return nil, false
 }
 
 func Len(robj *obj.Robj) int64 {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		return unwrap(robj).Len()
 	}
 	return 0
 }
 
 func Range(robj *obj.Robj, start, end int64) [][]byte {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		return unwrap(robj).Range(start, end)
 	}
 	return nil
 }
 
 func Trim(robj *obj.Robj, start, end int64) {
-	if robj.CheckEncoding(obj.ObjEncodingQuicklist) {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).Trim(start, end)
 	}
 	return

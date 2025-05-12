@@ -16,32 +16,32 @@ type sds interface {
 
 func NewRobj(val any) *obj.Robj {
 	robj := obj.Robj{}
-	robj.SetType(obj.ObjString)
+	robj.SetType(obj.TypeString)
 	switch val.(type) {
 	case SDS:
-		robj.SetEncoding(obj.ObjEncodingRaw)
+		robj.SetEncoding(obj.EncodingRaw)
 	case []byte:
 		val = New(val.([]byte))
-		robj.SetEncoding(obj.ObjEncodingRaw)
+		robj.SetEncoding(obj.EncodingRaw)
 	case int64:
-		robj.SetEncoding(obj.ObjEncodingInt)
+		robj.SetEncoding(obj.EncodingInt)
 	}
 	robj.SetVal(val)
 	return &robj
 }
 
 func Append(robj *obj.Robj, s []byte) {
-	if robj.CheckEncoding(obj.ObjEncodingRaw) {
+	if robj.CheckEncoding(obj.EncodingRaw) {
 		unwrap(robj).Cat(s)
 	}
 	return
 }
 
 func Len(robj *obj.Robj) int64 {
-	if robj.CheckEncoding(obj.ObjEncodingRaw) {
+	if robj.CheckEncoding(obj.EncodingRaw) {
 		return int64(unwrap(robj).Len())
 	}
-	if robj.CheckEncoding(obj.ObjEncodingInt) {
+	if robj.CheckEncoding(obj.EncodingInt) {
 		return util.Digit10(uint64(unwrapInt(robj)))
 	}
 	return 0
@@ -49,7 +49,7 @@ func Len(robj *obj.Robj) int64 {
 
 func Incr(robj *obj.Robj, n int64) int64 {
 	_ = TryObjectEncoding(robj)
-	if robj.CheckEncoding(obj.ObjEncodingInt) {
+	if robj.CheckEncoding(obj.EncodingInt) {
 		n += unwrapInt(robj)
 		robj.SetVal(n)
 		return n
@@ -58,10 +58,10 @@ func Incr(robj *obj.Robj, n int64) int64 {
 }
 
 func TryObjectEncoding(robj *obj.Robj) error {
-	if !robj.CheckType(object.ObjString) {
+	if !robj.CheckType(object.TypeString) {
 		return nil
 	}
-	if !robj.SDSEncodedObject() {
+	if !robj.CheckEncoding(obj.EncodingRaw) {
 		return nil
 	}
 
@@ -70,9 +70,9 @@ func TryObjectEncoding(robj *obj.Robj) error {
 	val := unwrap(robj).String()
 	if len(val) <= 20 {
 		if numval, err = strconv.ParseInt(val, 10, 64); err == nil {
-			if robj.CheckEncoding(obj.ObjEncodingRaw) {
+			if robj.CheckEncoding(obj.EncodingRaw) {
 				robj.SetVal(numval)
-				robj.SetEncoding(obj.ObjEncodingInt)
+				robj.SetEncoding(obj.EncodingInt)
 			}
 		}
 	}
@@ -81,13 +81,13 @@ func TryObjectEncoding(robj *obj.Robj) error {
 }
 
 func Int64Val(robj *obj.Robj) (int64, bool) {
-	if !robj.CheckType(obj.ObjString) {
+	if !robj.CheckType(obj.TypeString) {
 		return 0, false
 	}
-	if robj.SDSEncodedObject() {
+	if robj.CheckEncoding(obj.EncodingRaw) {
 		TryObjectEncoding(robj)
 	}
-	if robj.CheckEncoding(obj.ObjEncodingInt) {
+	if robj.CheckEncoding(obj.EncodingInt) {
 		return unwrapInt(robj), true
 	}
 	return 0, false

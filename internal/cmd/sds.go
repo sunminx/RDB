@@ -47,7 +47,7 @@ func AppendCommand(cli client) bool {
 		_ = setGenericCommand(cli, key, argv[2], nil)
 		return OK
 	}
-	if !val.CheckType(obj.ObjString) {
+	if !val.CheckType(obj.TypeString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
@@ -87,7 +87,7 @@ func StrlenCommand(cli client) bool {
 		cli.AddReplyRaw(common.Shared["czero"])
 		return OK
 	}
-	if !val.CheckType(obj.ObjString) {
+	if !val.CheckType(obj.TypeString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return OK
 	}
@@ -129,7 +129,7 @@ func DecrCommand(cli client) bool {
 
 func incrdecrCommand(cli client, key string, n int64) bool {
 	val, ok := cli.LookupKeyWrite(key)
-	if !ok || !val.CheckType(obj.ObjString) {
+	if !ok || !val.CheckType(obj.TypeString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}

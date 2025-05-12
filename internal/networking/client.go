@@ -429,19 +429,19 @@ func (c *Client) Wake() {
 // AddReply output the complete value to client.
 func (c *Client) AddReply(robj *obj.Robj) {
 	switch robj.Type() {
-	case obj.ObjString:
+	case obj.TypeString:
 		{
 			var reply []byte
-			if robj.CheckEncoding(obj.ObjEncodingRaw) {
+			if robj.CheckEncoding(obj.EncodingRaw) {
 				reply = robj.Val().(sds.SDS)
-			} else if robj.CheckEncoding(obj.ObjEncodingInt) {
+			} else if robj.CheckEncoding(obj.EncodingInt) {
 				num := robj.Val().(int64)
 				reply = []byte(strconv.FormatInt(num, 10))
 			}
 			c.AddReplyStatus(reply)
 		}
-	case obj.ObjList:
-	case obj.ObjHash:
+	case obj.TypeList:
+	case obj.TypeHash:
 	default:
 	}
 }
@@ -488,7 +488,7 @@ func (c *Client) AddReplyInt64(n int64) {
 // AddReplyBulk output bulk strings to client. bulk strings represents a single binary
 // string. The string can be of any size. eg: "$6\r\nfoobar\r\n".
 func (c *Client) AddReplyBulk(robj *obj.Robj) {
-	if robj.SDSEncodedObject() {
+	if robj.CheckEncoding(obj.EncodingRaw) {
 		s := robj.Val().(sds.SDS)
 		c.AddReplyRaw([]byte("$" + strconv.Itoa(s.Len()) + "\r\n"))
 		c.AddReplyRaw(s.Bytes())
