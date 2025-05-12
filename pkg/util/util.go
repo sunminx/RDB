@@ -4,7 +4,7 @@ import (
 	"math"
 )
 
-func Cond[T int16 | int32 | int | int64 | string](expr bool, t, f T) T {
+func Cond[T byte | int16 | int32 | int | int64 | string](expr bool, t, f T) T {
 	if expr {
 		return t
 	}
