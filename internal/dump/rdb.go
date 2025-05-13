@@ -6,6 +6,7 @@ import (
 	"errors"
 	"fmt"
 	"math"
+	"os"
 	"strconv"
 	"time"
 	"unsafe"
@@ -14,7 +15,6 @@ import (
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/hash"
 	"github.com/sunminx/RDB/internal/list"
-	"github.com/sunminx/RDB/internal/networking"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/rio"
 	"github.com/sunminx/RDB/pkg/util"
@@ -25,11 +25,23 @@ type Rdber struct {
 	wr    *rio.Writer
 	cksum int64
 	db    *db.DB
-	srv   *networking.Server
+	info  rdberInfo
 }
 
-func (rdb *Rdber) Save(db *db.DB) error {
-	if !rdb.writeRaw([]byte(fmt.Sprintf("REDIS%04d", rdb.srv.RdbVersion))) {
+func newRdbSaver(file *os.File, db *db.DB, rdberInfo rdberInfo) (*Rdber, error) {
+	wr, err := rio.NewWriter(file)
+	if err != nil {
+		return nil, errors.Join(err, errors.New("cannot create rio writer"))
+	}
+	return &Rdber{
+		wr:   wr,
+		db:   db,
+		info: rdberInfo,
+	}, nil
+}
+
+func (rdb *Rdber) save() error {
+	if !rdb.writeRaw([]byte(fmt.Sprintf("REDIS%04d", rdb.info.version))) {
 		return errors.New("write rdb version error")
 	}
 	if !rdb.saveAuxFields() {
@@ -40,7 +52,7 @@ func (rdb *Rdber) Save(db *db.DB) error {
 		return errors.New("save select db num error")
 	}
 
-	for e := range db.Iterator() {
+	for e := range rdb.db.Iterator() {
 		if !rdb.saveKeyValPair(e.Key, e.Val, e.Expire) {
 			return errors.New("save key-val pair error")
 		}
@@ -73,13 +85,6 @@ func (rdb *Rdber) saveSelectDBNum(num uint64) bool {
 	}
 	return rdb.saveLen(num)
 }
-
-const (
-	// saved indicates that data persistence has been completed.
-	saved = true
-	// nosave indicates that an unexpect occurred and not saved.
-	nosave = false
-)
 
 func (rdb *Rdber) saveAuxFields() bool {
 	var saved bool = true
@@ -135,7 +140,7 @@ func (rdb *Rdber) Load() error {
 	if err != nil {
 		return errors.New("RDB format version not found")
 	}
-	if ver < 1 || ver > rdb.srv.RdbVersion {
+	if ver < 1 || ver > rdb.info.version {
 		return fmt.Errorf("can't handle RDB format version %d", ver)
 	}
 

@@ -2,30 +2,19 @@ package rio
 
 import (
 	"bufio"
-	"errors"
 	"os"
 
 	"github.com/sunminx/RDB/pkg/util"
 )
 
-var (
-	ErrCannotOpenFile = errors.New("target file can not be opened")
-)
-
 type Reader struct {
-	rd   *bufio.Reader
-	name string
+	rd *bufio.Reader
 }
 
-func NewReader(name string) (*Reader, error) {
-	file, err := os.Open(name)
-	if err != nil {
-		return nil, ErrCannotOpenFile
-	}
+func NewReader(file *os.File) (*Reader, error) {
 	rd := bufio.NewReader(file)
 	return &Reader{
-		rd:   rd,
-		name: name,
+		rd: rd,
 	}, nil
 }
 
@@ -35,7 +24,6 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 
 type Writer struct {
 	wr              *bufio.Writer
-	name            string
 	updateCksum     bool
 	updateCksumFn   updateCksumFn
 	processBytes    int
@@ -46,15 +34,10 @@ type Writer struct {
 // without modifying the original byte array.
 type updateCksumFn func(*Writer, []byte, int)
 
-func NewWriter(name string) (*Writer, error) {
-	file, err := os.Create(name)
-	if err != nil {
-		return nil, ErrCannotOpenFile
-	}
+func NewWriter(file *os.File) (*Writer, error) {
 	wr := bufio.NewWriter(file)
 	return &Writer{
 		wr:              wr,
-		name:            name,
 		processBytes:    0,
 		maxProcessChunk: 1024,
 	}, nil

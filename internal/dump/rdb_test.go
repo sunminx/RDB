@@ -1,6 +1,7 @@
 package dump
 
 import (
+	"os"
 	"sync"
 	"testing"
 
@@ -33,22 +34,28 @@ func newMockDB() *db.DB {
 
 func newMockRdb(t *testing.T) *Rdber {
 	mdb := initDB()
-	wr, err := rio.NewWriter("./rdb.file")
+	file, err := os.Create("./rdb.file")
+	if err != nil {
+		t.Error("cannot create rdb.file")
+	}
+	wr, err := rio.NewWriter(file)
+	if err != nil {
+		t.Error(err)
+	}
+	file, err = os.Open("./rdb.file")
+	if err != nil {
+		t.Error("cannot create rdb.file")
+	}
+	rd, err := rio.NewReader(file)
 	if err != nil {
 		t.Error(err)
 	}
 	srv := networking.NewServer()
-	rd, err := rio.NewReader("./rdb.file")
-	if err != nil {
-		t.Error(err)
-	}
-	srv.RdbVersion = 9
-
 	return &Rdber{
-		wr:  wr,
-		rd:  rd,
-		db:  mdb,
-		srv: srv,
+		wr:   wr,
+		rd:   rd,
+		db:   mdb,
+		info: newRdberInfo(srv),
 	}
 }
 

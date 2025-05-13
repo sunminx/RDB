@@ -36,6 +36,8 @@ type Server struct {
 	CmdLock          sync.RWMutex
 	UnlockNotice     chan struct{}
 	RdbVersion       int
+	RdbSaveTimeStart int64
+	RdbChildType     int
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -148,6 +150,7 @@ func NewServer() *Server {
 		LogLevel:      "notice",
 		LogPath:       "/dev/null",
 		Version:       "0.0.1",
+		RdbVersion:    9,
 	}
 }
 
