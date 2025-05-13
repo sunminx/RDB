@@ -56,7 +56,7 @@ type Client struct {
 	multiState      *multiState
 	reply           []byte
 	lastInteraction int64
-	cmdLock         sync.RWMutex
+	cmdLock         *sync.RWMutex
 }
 
 type multiState struct {

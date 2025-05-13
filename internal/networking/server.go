@@ -11,7 +11,6 @@ import (
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/debug"
-	"github.com/sunminx/RDB/internal/dump"
 )
 
 var assert = debug.Assert
@@ -36,23 +35,30 @@ type Server struct {
 	LogPath            string
 	Version            string
 	RunnableClientCh   chan *Client
-	CmdLock            sync.RWMutex
+	CmdLock            *sync.RWMutex
 	UnlockNotice       chan struct{}
+	Dumper             dumper
 	RdbVersion         int
+	RdbFilename        string
 	RdbChildType       int
 	RdbChildRunning    atomic.Bool
 	RdbSaveTimeStart   int64
 	RdbSaveTimeUsed    int64
 	BackgroundDoneChan chan uint8
-	SaveParams         []SaveParams
+	SaveParams         []SaveParam
 	UnixTime           int64
 	LastSave           int64
 	Dirty              int
 }
 
 type SaveParam struct {
-	seconds int
-	changes int
+	Seconds int
+	Changes int
+}
+
+type dumper interface {
+	RdbSaveBackground(string, *Server) bool
+	RdbSaveBackgroundDoneHandler(*Server)
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -179,7 +185,7 @@ func initClients(n int) []*Client {
 
 func (s *Server) Init() {
 	s.cmds = cmd.CommandTable
-	s.CmdLock = sync.RWMutex{}
+	s.CmdLock = &sync.RWMutex{}
 	s.UnlockNotice = make(chan struct{})
 	s.RunnableClientCh = make(chan *Client, 1024)
 
@@ -215,6 +221,10 @@ const (
 	activeExpireCycleSlowTimePerc = 25
 )
 
+const (
+	DoneRdbBgsave uint8 = 1
+)
+
 func (s *Server) cron() {
 	now := time.Now()
 	s.UnixTime = now.UnixMilli()
@@ -226,8 +236,8 @@ func (s *Server) cron() {
 	if s.isBgsaveOrAofRewriteRunning() {
 		select {
 		case t := <-s.BackgroundDoneChan:
-			if t == dump.DoneRdbBgsave {
-				dump.RdbBgsaveDoneHandler(s)
+			if t == DoneRdbBgsave {
+				s.Dumper.RdbSaveBackgroundDoneHandler(s)
 			}
 		default:
 		}
@@ -235,12 +245,12 @@ func (s *Server) cron() {
 		// If there is not a background saving/rewrite in progress check if
 		// we have to save/rewrite now.
 		for _, sp := range s.SaveParams {
-			if s.Dirty >= sp.changes &&
-				int(s.UnixTime-s.LastSave) > 1e3*sp.seconds {
+			if s.Dirty >= sp.Changes &&
+				int(s.UnixTime-s.LastSave) > 1e3*sp.Seconds {
 
 				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...",
-					sp.changes, sp.seconds))
-				_ = dump.RdbSaveBackground(s.RdbFilename, s)
+					sp.Changes, sp.Seconds))
+				_ = s.Dumper.RdbSaveBackground(s.RdbFilename, s)
 				break
 			}
 		}

@@ -33,9 +33,9 @@ func TestProcessInline(t *testing.T) {
 		want  []*obj.Robj
 	}{
 		{input: []byte("$12\r\nset name jim\r\n"),
-			want: []*obj.Robj{obj.NewRobj([]byte("set")),
-				obj.NewRobj([]byte("name")),
-				obj.NewRobj([]byte("jim"))}},
+			want: []*obj.Robj{obj.New("set", obj.TypeString, obj.EncodingRaw),
+				obj.New("name", obj.TypeString, obj.EncodingRaw),
+				obj.New("jim", obj.TypeString, obj.EncodingRaw)}},
 	}
 
 	for _, tc := range testcases {
@@ -51,9 +51,9 @@ func TestProcessMultibulkBuffer(t *testing.T) {
 		want  []*obj.Robj
 	}{
 		{input: []byte("*3\r\n$3\r\nset\r\n$4\r\nname\r\n$3\r\njim\r\n"),
-			want: []*obj.Robj{obj.NewRobj([]byte("set")),
-				obj.NewRobj([]byte("name")),
-				obj.NewRobj([]byte("jim"))}},
+			want: []*obj.Robj{obj.New("set", obj.TypeString, obj.EncodingRaw),
+				obj.New("name", obj.TypeString, obj.EncodingRaw),
+				obj.New("jim", obj.TypeString, obj.EncodingRaw)}},
 	}
 
 	for _, tc := range testcases {

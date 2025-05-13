@@ -83,7 +83,7 @@ func Load(server *networking.Server, filename string) {
 					if seconds < 1 || changes < 0 {
 						goto loaderr
 					}
-					saveParam = networking.SaveParam{seconds, changes}
+					saveParam := networking.SaveParam{Seconds: seconds, Changes: changes}
 					server.SaveParams = append(server.SaveParams, saveParam)
 				} else if len(args) == 2 && args[1] == "" {
 					server.SaveParams = nil

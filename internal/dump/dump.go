@@ -16,6 +16,12 @@ const (
 	nosave = false
 )
 
+type Dumper struct{}
+
+func New() Dumper {
+	return Dumper{}
+}
+
 // RDB active child save type.
 const (
 	rdbChildTypeNone   = 0
@@ -23,11 +29,7 @@ const (
 	rdbChildTypeSocket = 2 // rdb is written to slave socket.
 )
 
-const (
-	DoneRdbBgsave uint8 = 1
-)
-
-func RdbSaveBackground(filename string, server *networking.Server) bool {
+func (d Dumper) RdbSaveBackground(filename string, server *networking.Server) bool {
 	if !server.RdbChildRunning.CompareAndSwap(false, true) {
 		return nosave
 	}
@@ -79,7 +81,7 @@ func rdbSave(filename string, server *networking.Server) bool {
 		return nosave
 	}
 	slog.Info("DB saved on disk")
-	server.BackgroundDoneChan <- doneRdbBgsave
+	server.BackgroundDoneChan <- networking.DoneRdbBgsave
 	return saved
 }
 
@@ -89,7 +91,7 @@ func newRdberInfo(server *networking.Server) rdberInfo {
 	}
 }
 
-func RdbBgsaveDoneHandler(server *networking.Server) {
+func (d Dumper) RdbSaveBackgroundDoneHandler(server *networking.Server) {
 	switch server.RdbChildType {
 	case rdbChildTypeDisk:
 		rdbBgsaveDoneHandlerDisk(server)

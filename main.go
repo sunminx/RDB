@@ -8,6 +8,7 @@ import (
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/conf"
+	"github.com/sunminx/RDB/internal/dump"
 	"github.com/sunminx/RDB/internal/networking"
 	"github.com/sunminx/RDB/pkg/rlog"
 )
@@ -18,6 +19,7 @@ func main() {
 
 	server := networking.NewServer()
 	server.Init()
+	server.Dumper = dump.New()
 	conf.Load(server, configfile)
 	//slog.SetLogLoggerLevel(common.ToSlogLevel(server.LogLevel))
 
