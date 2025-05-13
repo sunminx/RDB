@@ -2,42 +2,57 @@ package networking
 
 import (
 	"fmt"
+	"log/slog"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/debug"
+	"github.com/sunminx/RDB/internal/dump"
 )
 
 var assert = debug.Assert
 
 type Server struct {
 	gnet.BuiltinEventEngine
-	MaxIdleTime      int64
-	TcpKeepalive     int
-	ProtectedMode    bool
-	TcpBacklog       int
-	Ip               string
-	Port             int
-	ProtoAddr        string
-	MaxFd            int
-	Clients          []*Client
-	cmds             []cmd.Command
-	Requirepass      bool
-	DB               *db.DB
-	CronLoops        int64
-	Hz               int
-	LogLevel         string
-	LogPath          string
-	Version          string
-	RunnableClientCh chan *Client
-	CmdLock          sync.RWMutex
-	UnlockNotice     chan struct{}
-	RdbVersion       int
-	RdbSaveTimeStart int64
-	RdbChildType     int
+	MaxIdleTime        int64
+	TcpKeepalive       int
+	ProtectedMode      bool
+	TcpBacklog         int
+	Ip                 string
+	Port               int
+	ProtoAddr          string
+	MaxFd              int
+	Clients            []*Client
+	cmds               []cmd.Command
+	Requirepass        bool
+	DB                 *db.DB
+	CronLoops          int64
+	Hz                 int
+	LogLevel           string
+	LogPath            string
+	Version            string
+	RunnableClientCh   chan *Client
+	CmdLock            sync.RWMutex
+	UnlockNotice       chan struct{}
+	RdbVersion         int
+	RdbChildType       int
+	RdbChildRunning    atomic.Bool
+	RdbSaveTimeStart   int64
+	RdbSaveTimeUsed    int64
+	BackgroundDoneChan chan uint8
+	SaveParams         []SaveParams
+	UnixTime           int64
+	LastSave           int64
+	Dirty              int
+}
+
+type SaveParam struct {
+	seconds int
+	changes int
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -168,6 +183,8 @@ func (s *Server) Init() {
 	s.UnlockNotice = make(chan struct{})
 	s.RunnableClientCh = make(chan *Client, 1024)
 
+	s.BackgroundDoneChan = make(chan uint8, 1)
+
 	// Receive the message that the lock of command execution is released.
 	// check if there are any clients currently blocking and waiting to execute command,
 	// and wake up the client that is blocking and waiting first.
@@ -199,8 +216,35 @@ const (
 )
 
 func (s *Server) cron() {
+	now := time.Now()
+	s.UnixTime = now.UnixMilli()
+
 	s.databasesCron()
 	s.clientsCron()
+
+	// Check if a background saving or AOF rewrite in progress terminated.
+	if s.isBgsaveOrAofRewriteRunning() {
+		select {
+		case t := <-s.BackgroundDoneChan:
+			if t == dump.DoneRdbBgsave {
+				dump.RdbBgsaveDoneHandler(s)
+			}
+		default:
+		}
+	} else {
+		// If there is not a background saving/rewrite in progress check if
+		// we have to save/rewrite now.
+		for _, sp := range s.SaveParams {
+			if s.Dirty >= sp.changes &&
+				int(s.UnixTime-s.LastSave) > 1e3*sp.seconds {
+
+				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...",
+					sp.changes, sp.seconds))
+				_ = dump.RdbSaveBackground(s.RdbFilename, s)
+				break
+			}
+		}
+	}
 }
 
 func (s *Server) databasesCron() {
@@ -224,4 +268,8 @@ func (s *Server) clientsCron() {
 
 func (s *Server) delClient(fd int) {
 	s.Clients = append(s.Clients[:fd], s.Clients[fd+1:]...)
+}
+
+func (s *Server) isBgsaveOrAofRewriteRunning() bool {
+	return s.RdbChildRunning.Load()
 }

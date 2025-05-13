@@ -23,7 +23,15 @@ const (
 	rdbChildTypeSocket = 2 // rdb is written to slave socket.
 )
 
+const (
+	DoneRdbBgsave uint8 = 1
+)
+
 func RdbSaveBackground(filename string, server *networking.Server) bool {
+	if !server.RdbChildRunning.CompareAndSwap(false, true) {
+		return nosave
+	}
+
 	now := time.Now()
 	go rdbSave(filename, server)
 	slog.Info("background saving started")
@@ -71,6 +79,7 @@ func rdbSave(filename string, server *networking.Server) bool {
 		return nosave
 	}
 	slog.Info("DB saved on disk")
+	server.BackgroundDoneChan <- doneRdbBgsave
 	return saved
 }
 
@@ -78,4 +87,21 @@ func newRdberInfo(server *networking.Server) rdberInfo {
 	return rdberInfo{
 		version: server.RdbVersion,
 	}
+}
+
+func RdbBgsaveDoneHandler(server *networking.Server) {
+	switch server.RdbChildType {
+	case rdbChildTypeDisk:
+		rdbBgsaveDoneHandlerDisk(server)
+	default:
+	}
+}
+
+func rdbBgsaveDoneHandlerDisk(server *networking.Server) {
+	now := time.Now()
+	server.RdbChildType = rdbChildTypeNone
+	server.LastSave = now.UnixMilli()
+	server.RdbSaveTimeUsed = server.LastSave - server.RdbSaveTimeStart
+	server.RdbSaveTimeStart = -1
+	server.RdbChildRunning.CompareAndSwap(true, false)
 }

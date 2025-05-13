@@ -70,6 +70,24 @@ func Load(server *networking.Server, filename string) {
 				server.LogLevel = args[1]
 			case args[0] == "logfile" && len(args) == 2:
 				server.LogPath = args[1]
+			case args[0] == "save":
+				if len(args) == 3 {
+					seconds, err := strconv.Atoi(args[1])
+					if err != nil {
+						goto loaderr
+					}
+					changes, err := strconv.Atoi(args[2])
+					if err != nil {
+						goto loaderr
+					}
+					if seconds < 1 || changes < 0 {
+						goto loaderr
+					}
+					saveParam = networking.SaveParam{seconds, changes}
+					server.SaveParams = append(server.SaveParams, saveParam)
+				} else if len(args) == 2 && args[1] == "" {
+					server.SaveParams = nil
+				}
 			default:
 			}
 		}
