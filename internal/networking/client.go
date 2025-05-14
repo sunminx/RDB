@@ -43,7 +43,7 @@ type Client struct {
 	gnet.Conn
 	*db.DB
 	fd              int
-	srv             *Server
+	Server          *Server
 	flag            flag
 	authenticated   bool
 	querybuf        []byte
@@ -112,6 +112,11 @@ func (c *Client) argvByIdx(n int) string {
 
 func (c *Client) Argv() [][]byte {
 	return c.argv
+}
+
+func (c *Client) SetArgument(argv [][]byte) {
+	c.argv = argv
+	c.argc = len(argv)
 }
 
 func (c *Client) Multi() bool {
@@ -237,7 +242,7 @@ func (c *Client) processMultibulkBuffer() bool {
 			return false
 		}
 
-		if ll > maxMulitbulksWhileUnauth && c.srv.Requirepass && !c.authenticated {
+		if ll > maxMulitbulksWhileUnauth && c.Server.Requirepass && !c.authenticated {
 			c.AddReplyError([]byte("Protocol error: unauthenticated multibulk length"))
 			c.setProtocolError()
 			return false
@@ -279,7 +284,7 @@ func (c *Client) processMultibulkBuffer() bool {
 				c.setProtocolError()
 				return false
 			}
-			if ll > maxBulksWhileUnauth && c.srv.Requirepass && !c.authenticated {
+			if ll > maxBulksWhileUnauth && c.Server.Requirepass && !c.authenticated {
 				c.AddReplyError([]byte("Protocol error: unauthenticated bulk length"))
 				c.setProtocolError()
 			}
@@ -347,7 +352,7 @@ func (c *Client) processCommand() bool {
 		c.flag |= closeASAP
 		return true
 	}
-	command, ok := c.srv.LookupCommand(name)
+	command, ok := c.Server.LookupCommand(name)
 	if !ok {
 		var args string
 		for i := 1; i < c.argc; i++ {
@@ -412,11 +417,11 @@ func (c *Client) call() bool {
 		_ = c.cmd.Proc(c)
 		c.flag &= ^queueCall
 		c.cmdLock.Unlock()
-		c.srv.UnlockNotice <- struct{}{}
+		c.Server.UnlockNotice <- struct{}{}
 		return execed
 	} else {
 		c.flag |= queueCall
-		c.srv.RunnableClientCh <- c
+		c.Server.RunnableClientCh <- c
 		return nonExec
 	}
 }
@@ -524,10 +529,10 @@ func (c *Client) addReplyMultibulkLen(ln int64) {
 }
 
 func (c *Client) handleTimeout(now int64) bool {
-	timeouted := c.srv.MaxIdleTime > 0 && (now-c.lastInteraction) > c.srv.MaxIdleTime
+	timeouted := c.Server.MaxIdleTime > 0 && (now-c.lastInteraction) > c.Server.MaxIdleTime
 	if timeouted {
 		c.free()
-		c.srv.delClient(c.fd)
+		c.Server.delClient(c.fd)
 	}
 	return timeouted
 }

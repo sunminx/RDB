@@ -2,11 +2,15 @@ package dump
 
 import (
 	"errors"
+	"fmt"
 	"log/slog"
+	"strconv"
 
+	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/hash"
 	"github.com/sunminx/RDB/internal/list"
+	"github.com/sunminx/RDB/internal/networking"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/rio"
 	"github.com/sunminx/RDB/internal/sds"
@@ -14,10 +18,11 @@ import (
 )
 
 type Aofer struct {
-	rd    *rio.Reader
-	wr    *rio.Writer
-	cksum int64
-	db    *db.DB
+	rd      *rio.Reader
+	wr      *rio.Writer
+	cksum   int64
+	db      *db.DB
+	fakeCli *networking.Client
 }
 
 func (aof *Aofer) rewrite(timestamp int64) error {
@@ -185,4 +190,88 @@ func (aof *Aofer) writeMultibulkCount(c int64) bool {
 werr:
 	slog.Warn("failed write multibulk count", "err", err)
 	return noRewrite
+}
+
+const aofAnnotationLineMaxLen = 1024
+
+func (aof *Aofer) load() error {
+	var err error
+
+	for {
+		p, isPrefix, err := aof.rd.ReadLine()
+		if isPrefix || err != nil {
+			goto rerr
+		}
+		if p[0] == '#' {
+			continue
+		}
+		if p[0] != '*' {
+			err = errors.New("invalid protocol")
+			goto rerr
+		}
+		argc, err := strconv.ParseInt(string(p[1:]), 10, 64)
+		if err != nil || argc < 1 {
+			goto rerr
+		}
+
+		argv := make([][]byte, argc, argc)
+		var i int64
+		for ; i < argc; i++ {
+			p, isPrefix, err := aof.rd.ReadLine()
+			if isPrefix || err != nil {
+				goto rerr
+			}
+			if p[0] != '$' {
+				goto rerr
+			}
+			ln, err := strconv.ParseInt(string(p[1:]), 10, 64)
+			if err != nil || ln < 1 {
+				goto rerr
+			}
+			p, err = aof.readRaw(int(ln))
+			if err != nil {
+				goto rerr
+			}
+
+			argv[i] = p
+
+			// Discard "CRLF"
+			_, err = aof.readRaw(2)
+			if err != nil {
+				goto rerr
+			}
+		}
+
+		aof.fakeCli.SetArgument(argv)
+		command, err := aof.lookupCommand(string(argv[0]), int(argc))
+		if err != nil {
+			goto rerr
+		}
+
+		if !command.Proc(aof.fakeCli) {
+			err = errors.New("failed call command")
+			goto rerr
+		}
+	}
+	return nil
+rerr:
+	return errors.Join(err, errors.New("failed load aof file"))
+}
+
+func (aof *Aofer) lookupCommand(name string, argc int) (cmd.Command, error) {
+	command, found := aof.fakeCli.Server.LookupCommand(name)
+	if found {
+		if (command.Arity > 0 && command.Arity != argc) || (argc < -command.Arity) {
+			return command, fmt.Errorf("wrong number of arguments for %q command", name)
+		}
+	}
+	return command, nil
+}
+
+func (aof *Aofer) readRaw(n int) ([]byte, error) {
+	p := make([]byte, n, n)
+	if _, err := aof.rd.Read(p); err != nil {
+		return nil, err
+	}
+	return p, nil
 }

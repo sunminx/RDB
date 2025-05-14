@@ -22,6 +22,10 @@ func (r *Reader) Read(p []byte) (n int, err error) {
 	return r.rd.Read(p)
 }
 
+func (r *Reader) ReadLine() ([]byte, bool, error) {
+	return r.rd.ReadLine()
+}
+
 type Writer struct {
 	wr              *bufio.Writer
 	updateCksum     bool

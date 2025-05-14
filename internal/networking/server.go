@@ -71,7 +71,7 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 	}
 
 	cli := NewClient(conn, s.DB)
-	cli.srv = s
+	cli.Server = s
 	cli.cmdLock = s.CmdLock
 	cli.lastInteraction = time.Now().UnixMilli()
 	s.Clients[fd] = cli
