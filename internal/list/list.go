@@ -83,6 +83,14 @@ func Trim(robj *obj.Robj, start, end int64) {
 	return
 }
 
+func NewIterator(robj *obj.Robj) obj.Iterator {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
+		ql := robj.Val().(*Quicklist)
+		return newQuicklistIterator(ql)
+	}
+	return nil
+}
+
 // unwrap unwrap robj to obtain Quicklist. before unwrapping, the encoding type should be checked first.
 // Unsafe
 func unwrap(robj *obj.Robj) *Quicklist {

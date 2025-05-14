@@ -61,3 +61,8 @@ func (o *Robj) CheckType(typ RobjType) bool {
 func (o *Robj) CheckEncoding(encoding EncodingType) bool {
 	return o.encoding == encoding
 }
+
+type Iterator interface {
+	HasNext() bool
+	Next() any
+}

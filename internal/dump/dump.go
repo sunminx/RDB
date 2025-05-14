@@ -107,3 +107,8 @@ func rdbBgsaveDoneHandlerDisk(server *networking.Server) {
 	server.RdbSaveTimeStart = -1
 	server.RdbChildRunning.CompareAndSwap(true, false)
 }
+
+const (
+	rewrited  = true
+	noRewrite = false
+)

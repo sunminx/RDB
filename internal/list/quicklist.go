@@ -328,7 +328,7 @@ func (l *Quicklist) Index(idx int64) ([]byte, bool) {
 
 	var entry []byte
 	iter := newQuicklistIterator(l)
-	for idx >= 0 && iter.hasNext() {
+	for idx >= 0 && iter.HasNext() {
 		entry = iter.next()
 		idx--
 	}
@@ -348,7 +348,7 @@ func (l *Quicklist) Range(start, end int64) (entrys [][]byte) {
 
 	var entry []byte
 	iter := newQuicklistIterator(l)
-	for iter.hasNext() {
+	for iter.HasNext() {
 		entry = iter.next()
 		if start < iter.idx {
 			entrys = append(entrys, entry)
@@ -406,8 +406,12 @@ func newQuicklistIterator(list *Quicklist) *quicklistIterator {
 	}
 }
 
-func (iter *quicklistIterator) hasNext() bool {
+func (iter *quicklistIterator) HasNext() bool {
 	return iter.idx < iter.list.cnt
+}
+
+func (iter *quicklistIterator) Next() any {
+	return iter.next()
 }
 
 func (iter *quicklistIterator) next() []byte {

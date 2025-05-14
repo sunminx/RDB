@@ -52,7 +52,11 @@ func (db *DB) SetKey(key string, val *obj.Robj) {
 func (db *DB) SetExpire(key string, expire time.Duration) {
 	sdb := db.lookupSdb(key)
 	sdb.setExpire(key, expire)
-	return
+}
+
+func (db *DB) Expire(key string) time.Duration {
+	sdb := db.lookupSdb(key)
+	return sdb.expire(key)
 }
 
 func (db *DB) DelKey(key string) {

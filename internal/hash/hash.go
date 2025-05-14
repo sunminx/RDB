@@ -54,3 +54,13 @@ func Exists(robj *obj.Robj, field []byte) bool {
 func unwrap(robj *obj.Robj) *Zipmap {
 	return robj.Val().(*Zipmap)
 }
+
+type KVPair [2][]byte
+
+func NewIterator(robj *obj.Robj) obj.Iterator {
+	if robj.CheckEncoding(obj.EncodingZipmap) {
+		zm := robj.Val().(*Zipmap)
+		return newZipmapIterator(zm)
+	}
+	return nil
+}

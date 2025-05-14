@@ -88,6 +88,14 @@ func (sdb *sdb) setExpire(key string, expire time.Duration) {
 	sdb.expires.Replace(key, sds.NewRobj(int64(expire)))
 }
 
+func (sdb *sdb) expire(key string) time.Duration {
+	e, ok := sdb.expires.FetchValue(key)
+	if !ok {
+		return -1
+	}
+	return time.Duration(e.Val().(int64))
+}
+
 func (sdb *sdb) delKey(key string) {
 	sdb.dict.Del(key)
 }

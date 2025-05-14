@@ -77,3 +77,24 @@ func (zp *Zipmap) find(field []byte) (int16, int32) {
 	}
 	return iter.Index(), iter.Offset()
 }
+
+type ZipmapIterator struct {
+	zlIter *ds.ZiplistIterator
+}
+
+func newZipmapIterator(zm *Zipmap) *ZipmapIterator {
+	return &ZipmapIterator{ds.NewZiplistIterator(zm.Ziplist)}
+}
+
+func (iter *ZipmapIterator) HasNext() bool {
+	return iter.zlIter.HasNext()
+}
+
+func (iter *ZipmapIterator) Next() any {
+	return iter.next()
+}
+
+func (iter *ZipmapIterator) next() KVPair {
+	k, v := iter.zlIter.Next(), iter.zlIter.Next()
+	return KVPair([2][]byte{k, v})
+}
