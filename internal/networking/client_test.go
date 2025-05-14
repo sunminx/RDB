@@ -10,7 +10,7 @@ func NewMockClient(buf []byte) *Client {
 	return &Client{
 		Conn:         nil,
 		fd:           0,
-		srv:          newMockServer(),
+		Server:       newMockServer(),
 		flag:         none,
 		querybuf:     make([]byte, 0),
 		multibulklen: 0,

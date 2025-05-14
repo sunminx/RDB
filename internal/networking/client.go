@@ -372,7 +372,7 @@ func (c *Client) processCommand() bool {
 
 	c.cmd = command
 	if c.flag&multi != 0 && c.cmd.Name != "exec" {
-		c.queueMultiCommand()
+		c.QueueMultiCommand()
 		c.AddReplyRaw([]byte("+QUEUED\r\n"))
 		return execed
 	} else {
@@ -386,7 +386,7 @@ clean:
 	return execed
 }
 
-func (c *Client) queueMultiCommand() {
+func (c *Client) QueueMultiCommand() {
 	multiState := c.multiState
 	if multiState == nil {
 		multiState = newMultiState()

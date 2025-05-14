@@ -3,6 +3,7 @@ package dump
 import (
 	"errors"
 	"fmt"
+	"io"
 	"log/slog"
 	"strconv"
 
@@ -23,6 +24,11 @@ type Aofer struct {
 	cksum   int64
 	db      *db.DB
 	fakeCli *networking.Client
+	info    aofInfo
+}
+
+type aofInfo struct {
+	aofLoadTruncated bool
 }
 
 func (aof *Aofer) rewrite(timestamp int64) error {
@@ -192,14 +198,42 @@ werr:
 	return noRewrite
 }
 
+const (
+	aofOk        = 0
+	aofNotExist  = 1
+	aofEmpty     = 2
+	aofOpenErr   = 3
+	aofFailed    = 4
+	aofTruncated = 5
+)
+
 const aofAnnotationLineMaxLen = 1024
 
-func (aof *Aofer) load() error {
-	var err error
+func (aof *Aofer) load(filename string, server *networking.Server) int {
+	var (
+		validUpTo              int64
+		validBeforeMulti       int64
+		lastProgressReportSize int64
+		loops                  int64
+		ret                    int
+	)
 
 	for {
+		loops++
+		if loops%1024 == 0 {
+			processDelta := aof.rd.Tell() - lastProgressReportSize
+			server.LoadingLoadedBytes += processDelta
+			lastProgressReportSize += processDelta
+		}
+
 		p, isPrefix, err := aof.rd.ReadLine()
-		if isPrefix || err != nil {
+		if err != nil {
+			if err == io.EOF {
+				break
+			}
+			goto rerr
+		}
+		if isPrefix {
 			goto rerr
 		}
 		if p[0] == '#' {
@@ -222,7 +256,7 @@ func (aof *Aofer) load() error {
 				goto rerr
 			}
 			if p[0] != '$' {
-				goto rerr
+				goto fmterr
 			}
 			ln, err := strconv.ParseInt(string(p[1:]), 10, 64)
 			if err != nil || ln < 1 {
@@ -245,17 +279,70 @@ func (aof *Aofer) load() error {
 		aof.fakeCli.SetArgument(argv)
 		command, err := aof.lookupCommand(string(argv[0]), int(argc))
 		if err != nil {
+			ret = aofFailed
 			goto rerr
 		}
 
-		if !command.Proc(aof.fakeCli) {
-			err = errors.New("failed call command")
-			goto rerr
+		if aof.info.aofLoadTruncated {
+			validBeforeMulti = validUpTo
+		}
+
+		if aof.fakeCli.Multi() && command.Name != "exec" {
+			aof.fakeCli.QueueMultiCommand()
+		} else {
+			command.Proc(aof.fakeCli)
+		}
+
+		if aof.info.aofLoadTruncated {
+			validUpTo = aof.rd.Tell()
 		}
 	}
-	return nil
+
+	if aof.fakeCli.Multi() {
+		validUpTo = validBeforeMulti
+		goto uxeof
+	}
+loadedok:
+	// Update the amount of data loaded in the last round.
+	server.LoadingLoadedBytes += aof.rd.Tell() - lastProgressReportSize
+	goto cleanup
 rerr:
-	return errors.Join(err, errors.New("failed load aof file"))
+	if !aof.rd.EOF() {
+		slog.Warn("unrecoverable error reading the append only file", "filename", filename)
+		ret = aofFailed
+		goto cleanup
+	}
+uxeof:
+	if aof.info.aofLoadTruncated {
+		if validUpTo == -1 {
+			slog.Warn("last valid command offset is invalid", "filename", filename)
+		} else {
+			if aof.rd.Truncate(validUpTo) != nil {
+				slog.Warn("truncate aof file failed")
+			} else {
+				// Reset offset which we had loaded.
+				if _, err := aof.rd.Seek(0, 2); err != nil {
+					slog.Warn("can't seek the end of the AOF file", "filename", filename)
+				} else {
+					slog.Warn("AOF loaded anyway because aof-load-truncated is enabled", "filename", filename)
+					ret = aofTruncated
+					goto loadedok
+				}
+			}
+		}
+	}
+	slog.Warn("Unexpected end of file reading the append only file . You can: " +
+		"1) Make a backup of your AOF file, then use ./redis-check-aof --fix <filename.manifest>. " +
+		"2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.")
+	ret = aofFailed
+	goto cleanup
+fmterr:
+	slog.Warn("Bad file format reading the append only file"+
+		"make a backup of your AOF file, then use ./redis-check-aof --fix <filename.manifest>", "filename", filename)
+	ret = aofFailed
+cleanup:
+	aof.rd.Close()
+	return ret
 }
 
 func (aof *Aofer) lookupCommand(name string, argc int) (cmd.Command, error) {
