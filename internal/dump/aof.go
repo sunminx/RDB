@@ -41,17 +41,58 @@ import (
 )
 
 type Aofer struct {
-	file    *os.File
+	file    *os.File // The currently open file
 	rd      *rio.Reader
 	wr      *rio.Writer
 	cksum   int64
 	db      *db.DB
 	fakeCli *networking.Client
-	info    aofInfo
 }
 
-type aofInfo struct {
-	aofLoadTruncated bool
+func newAofer(db *db.DB) *Aofer {
+	return &Aofer{
+		db:      db,
+		fakeCli: networking.NewClient(nil, db),
+	}
+}
+
+func (aof *Aofer) setFile(filename string, mode byte) error {
+	var file *os.File
+	if mode == 'r' {
+		aof.closeFile()
+		file, err := os.Open(filename)
+		if err != nil {
+			return errors.Join(err, errors.New("failed open faile "+filename))
+		}
+		rd, err := rio.NewReader(file)
+		if err != nil {
+			return errors.Join(err, errors.New("failed new rio.Reader "+filename))
+		}
+		aof.rd = rd
+	} else if mode == 'w' {
+		aof.closeFile()
+		file, err := os.Create(filename)
+		if err != nil {
+			return errors.Join(err, errors.New("failed create file "+filename))
+		}
+		wr, err := rio.NewWriter(file)
+		if err != nil {
+			return errors.Join(err, errors.New("failed new rio.Writer "+filename))
+		}
+		aof.wr = wr
+	}
+
+	if file == nil {
+		return errors.New("invalid mode param")
+	}
+	aof.file = file
+	return nil
+}
+
+func (aof *Aofer) closeFile() {
+	if aof.file != nil {
+		aof.file.Close()
+	}
 }
 
 func (aof *Aofer) rewrite(timestamp int64) error {
@@ -221,6 +262,39 @@ werr:
 	return noRewrite
 }
 
+type aofManifest struct {
+	baseAofInfo     *aofInfo
+	incrAofInfos    []*aofInfo
+	histAofInfos    []*aofInfo
+	currBaseFileSeq int64
+	currIncrFileSeq int64
+	dirty           bool
+}
+
+type aofInfo struct {
+	name        string
+	typ         aofFileType
+	seq         int64
+	startOffset int64
+	endOffset   int64
+}
+
+func (am *aofManifest) fileNum() int {
+	fileNum := len(am.incrAofInfos)
+	if am.baseAofInfo != nil {
+		fileNum++
+	}
+	return fileNum
+}
+
+type aofFileType byte
+
+const (
+	base = 'b'
+	hist = 'h'
+	incr = 'i'
+)
+
 const (
 	aofOk        = 0
 	aofNotExist  = 1
@@ -230,7 +304,15 @@ const (
 	aofTruncated = 5
 )
 
-func (aof *Aofer) load(filename string, server *networking.Server) int {
+func (aof *Aofer) aofFileSize() int64 {
+	info, err := aof.file.Stat()
+	if err != nil {
+		return -1
+	}
+	return info.Size()
+}
+
+func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int {
 	var (
 		validUpTo              int64
 		validBeforeMulti       int64
@@ -347,7 +429,7 @@ func (aof *Aofer) load(filename string, server *networking.Server) int {
 			goto rerr
 		}
 
-		if aof.info.aofLoadTruncated {
+		if server.AofLoadTruncated {
 			validBeforeMulti = validUpTo
 		}
 
@@ -357,7 +439,7 @@ func (aof *Aofer) load(filename string, server *networking.Server) int {
 			command.Proc(aof.fakeCli)
 		}
 
-		if aof.info.aofLoadTruncated {
+		if server.AofLoadTruncated {
 			validUpTo = aof.rd.Tell()
 		}
 	}
@@ -377,7 +459,7 @@ rerr: /* An error occurred during the loading process. */
 		goto cleanup
 	}
 uxeof: /* The "Multi" was loaded, but the "Exec" was not. */
-	if aof.info.aofLoadTruncated {
+	if server.AofLoadTruncated {
 		if validUpTo == -1 {
 			slog.Warn("last valid command offset is invalid", "filename", filename)
 		} else {
