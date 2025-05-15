@@ -1,3 +1,24 @@
+// The evolution history of aof.
+// Since redis 2.x:
+//  1. All write commands are appended to the AOF file in Text Protocol format (RESP, Redis Serialization Protocol).
+//  2. By regularly rewriting the aof file, deleting and merging write commands, a compact new AOF file is generated.
+//
+// Since redis 4.x:
+//  1. Import aof-use-rdb-preamble yes, When rewriting AOF, first store the database snapshot in RDB format,
+//     and then append the incremental AOF command.
+//
+// Since redis 7.x:
+//  1. The RDB part and the AOF part are no longer saved in one file.
+//  2. The AOF file is split into multiple small files (similar to the segmentation of WAL logs)
+//     to avoid a single AOF file being too large.
+//  3. Introduce the manifest file to record the AOF shard information.
+//
+// appendonlydir/
+// ├── appendonly.aof.1.base.rdb   # basic data in RDB format
+// ├── appendonly.aof.1.incr.aof   # incremental write commands
+// ├── appendonly.aof.2.incr.aof
+// └── appendonly.aof.manifest    # record sharding information
+
 package dump
 
 import (
@@ -5,6 +26,7 @@ import (
 	"fmt"
 	"io"
 	"log/slog"
+	"os"
 	"strconv"
 
 	"github.com/sunminx/RDB/internal/cmd"
@@ -19,6 +41,7 @@ import (
 )
 
 type Aofer struct {
+	file    *os.File
 	rd      *rio.Reader
 	wr      *rio.Writer
 	cksum   int64
@@ -207,8 +230,6 @@ const (
 	aofTruncated = 5
 )
 
-const aofAnnotationLineMaxLen = 1024
-
 func (aof *Aofer) load(filename string, server *networking.Server) int {
 	var (
 		validUpTo              int64
@@ -218,11 +239,54 @@ func (aof *Aofer) load(filename string, server *networking.Server) int {
 		ret                    int
 	)
 
+	// Check if the AOF file is in RDB format (it may be RDB encoded base AOF
+	// or old style RDB-preamble AOF). In that case we need to load the RDB file
+	// and later continue loading the AOF tail if it is an old style RDB-preamble AOF.
+	p, err := aof.readRaw(5)
+	if err != nil || string(p) != "REDIS" {
+		if _, err = aof.rd.Seek(0, 0); err != nil {
+			goto rerr
+		}
+	} else {
+		// Since redis 4.x aof-use-rdb-preamble
+		if server.AofFilename == filename {
+			slog.Info("reading RDB preamble from AOF file...")
+		} else {
+			// Since redis 7.x aof-chunking
+			slog.Info("reading RDB base file on AOF loading...")
+		}
+		if _, err = aof.rd.Seek(0, 0); err != nil {
+			goto rerr
+		}
+		rdber, err := newRdbSaver(aof.file, server.DB, newRdberInfo(server))
+		if err != nil {
+			goto rerr
+		}
+		// Laoding RDB part firstly.
+		if err = rdber.Load(); err != nil {
+			if server.AofFilename == filename {
+				slog.Info("failed reading RDB preamble from AOF file...", "err", err)
+			} else {
+				slog.Info("failed reading RDB base file on AOF loading...", "err", err)
+			}
+			goto cleanup
+		} else {
+			pos := aof.rd.Tell()
+			// During the rdb loading stage, the progress is reported only once.
+			loadingAbsProgress(server, pos)
+			lastProgressReportSize = pos
+			if server.AofFilename == filename {
+				slog.Info("reading the remaining AOF tail...")
+			}
+		}
+	}
+
 	for {
 		loops++
+		// During the aof loading phase, the progress is reported every 1024 times.
 		if loops%1024 == 0 {
 			processDelta := aof.rd.Tell() - lastProgressReportSize
-			server.LoadingLoadedBytes += processDelta
+			loadingAbsProgress(server, processDelta)
 			lastProgressReportSize += processDelta
 		}
 
@@ -304,15 +368,15 @@ func (aof *Aofer) load(filename string, server *networking.Server) int {
 	}
 loadedok:
 	// Update the amount of data loaded in the last round.
-	server.LoadingLoadedBytes += aof.rd.Tell() - lastProgressReportSize
+	loadingAbsProgress(server, aof.rd.Tell()-lastProgressReportSize)
 	goto cleanup
-rerr:
+rerr: /* An error occurred during the loading process. */
 	if !aof.rd.EOF() {
 		slog.Warn("unrecoverable error reading the append only file", "filename", filename)
 		ret = aofFailed
 		goto cleanup
 	}
-uxeof:
+uxeof: /* The "Multi" was loaded, but the "Exec" was not. */
 	if aof.info.aofLoadTruncated {
 		if validUpTo == -1 {
 			slog.Warn("last valid command offset is invalid", "filename", filename)
@@ -336,7 +400,7 @@ uxeof:
 		"2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.")
 	ret = aofFailed
 	goto cleanup
-fmterr:
+fmterr: /* Incorrect bulk format. */
 	slog.Warn("Bad file format reading the append only file"+
 		"make a backup of your AOF file, then use ./redis-check-aof --fix <filename.manifest>", "filename", filename)
 	ret = aofFailed

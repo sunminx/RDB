@@ -112,3 +112,7 @@ const (
 	rewrited  = true
 	noRewrite = false
 )
+
+func loadingAbsProgress(server *networking.Server, pos int64) {
+	server.LoadingLoadedBytes += pos
+}

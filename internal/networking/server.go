@@ -49,6 +49,7 @@ type Server struct {
 	UnixTime           int64
 	LastSave           int64
 	Dirty              int
+	AofFilename        string
 	LoadingLoadedBytes int64
 }
 

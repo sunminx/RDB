@@ -30,7 +30,7 @@ func (r *Reader) ReadLine() ([]byte, bool, error) {
 }
 
 func (r *Reader) Tell() int64 {
-	pos, err := r.Seek(0, 0)
+	pos, err := r.Seek(0, 1)
 	if err != nil {
 		return -1
 	}
