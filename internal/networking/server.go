@@ -50,6 +50,7 @@ type Server struct {
 	LastSave           int64
 	Dirty              int
 	AofFilename        string
+	AofDirname         string
 	AofLoadTruncated   bool
 	LoadingLoadedBytes int64
 }

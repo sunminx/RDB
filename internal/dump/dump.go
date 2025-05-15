@@ -113,6 +113,19 @@ const (
 	noRewrite = false
 )
 
+func aofLoad(server *networking.Server) bool {
+	filepath := server.AofDirname + "/" + aofManifestFilename(server.AofDirname)
+	am, err := createAofManifest(filepath)
+	if err == nil {
+		return aofLoadChunkMode(am, server)
+	}
+	if err != errManifestFileNotFound {
+		slog.Warn("failed load aof file", "err", err)
+		return false
+	}
+	return aofLoadUnChunkMode(server)
+}
+
 func loadingAbsProgress(server *networking.Server, pos int64) {
 	server.LoadingLoadedBytes += pos
 }
@@ -180,8 +193,8 @@ cleanup:
 	return ret == aofOk || ret == aofTruncated
 }
 
-// aofLoadNonChunkMode load aof file stored by aof-use-rdb-preamble or only aof.
-func aofLoadNonChunkMode(server *networking.Server) bool {
+// aofLoadUnChunkMode load aof file stored by aof-use-rdb-preamble or only aof.
+func aofLoadUnChunkMode(server *networking.Server) bool {
 	aof := newAofer(server.DB)
 	filename := server.AofFilename
 	if err := aof.setFile(filename, 'r'); err != nil {

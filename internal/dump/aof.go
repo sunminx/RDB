@@ -28,6 +28,7 @@ import (
 	"log/slog"
 	"os"
 	"strconv"
+	"strings"
 
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
@@ -262,34 +263,10 @@ werr:
 	return noRewrite
 }
 
-type aofManifest struct {
-	baseAofInfo     *aofInfo
-	incrAofInfos    []*aofInfo
-	histAofInfos    []*aofInfo
-	currBaseFileSeq int64
-	currIncrFileSeq int64
-	dirty           bool
-}
-
-type aofInfo struct {
-	name        string
-	typ         aofFileType
-	seq         int64
-	startOffset int64
-	endOffset   int64
-}
-
-func (am *aofManifest) fileNum() int {
-	fileNum := len(am.incrAofInfos)
-	if am.baseAofInfo != nil {
-		fileNum++
-	}
-	return fileNum
-}
-
 type aofFileType byte
 
 const (
+	none = '0'
 	base = 'b'
 	hist = 'h'
 	incr = 'i'
@@ -507,4 +484,157 @@ func (aof *Aofer) readRaw(n int) ([]byte, error) {
 		return nil, err
 	}
 	return p, nil
+}
+
+type aofManifest struct {
+	baseAofInfo     *aofInfo
+	incrAofInfos    []*aofInfo
+	histAofInfos    []*aofInfo
+	currBaseFileSeq int64
+	currIncrFileSeq int64
+	dirty           bool
+}
+
+func newAofManifest() *aofManifest {
+	return &aofManifest{
+		incrAofInfos: make([]*aofInfo, 0),
+		histAofInfos: make([]*aofInfo, 0),
+	}
+}
+
+type aofInfo struct {
+	name        string
+	typ         aofFileType
+	seq         int64
+	startOffset int64
+	endOffset   int64
+}
+
+func newAofInfo() *aofInfo {
+	return &aofInfo{
+		typ:         none,
+		seq:         -1,
+		startOffset: -1,
+		endOffset:   -1,
+	}
+}
+
+const manifestMaxLine = 1024
+
+// AOF manifest key.
+const (
+	aofManifestKeyFileName        = "file"
+	aofManifestKeyFileSeq         = "seq"
+	aofManifestKeyFileType        = "type"
+	aofManifestKeyFileStartoffset = "startoffset"
+	aofManifestKeyFileEndoffset   = "endoffset"
+)
+
+var errManifestFileNotFound = errors.New("manifest file not found")
+
+func createAofManifest(filepath string) (*aofManifest, error) {
+	file, err := os.Open(filepath)
+	if err != nil {
+		slog.Warn("failed open AOF manifest file", "filepath", filepath)
+		return nil, errManifestFileNotFound
+	}
+	defer file.Close()
+
+	am := newAofManifest()
+	buf := make([]byte, 1024)
+	for {
+		n, err := file.Read(buf)
+		if err != nil {
+			if err == io.EOF {
+				slog.Info("read AOF manifest file finished")
+				break
+			}
+			return nil, errors.Join(err, errors.New("failed read AOF manifest file"))
+		}
+
+		if buf[0] == '#' {
+			continue
+		}
+		if n >= manifestMaxLine {
+			return nil, errors.New("the AOF manifest file contains too long line")
+		}
+
+		line := strings.Trim(string(buf[:n]), "\t\r\n")
+		argv := strings.Split(line, " ")
+		argc := len(argv)
+		if argc < 6 || argc%2 != 0 {
+			return nil, errors.New("invalid AOF manifest file format")
+		}
+
+		ai := newAofInfo()
+
+		var maxSeq int64
+		for i := 0; i < argc; i += 2 {
+			switch argv[i] {
+			case aofManifestKeyFileName:
+				name := argv[i+1]
+				if strings.Index(name, "/") == -1 {
+					return nil, errors.New("file can't be a path, just a filename")
+				}
+				ai.name = name
+			case aofManifestKeyFileSeq:
+				seq, err := strconv.ParseInt(argv[i+1], 10, 64)
+				if err != nil {
+					return nil, errors.Join(err, errors.New("invalid seq value"))
+				}
+				ai.seq = seq
+			case aofManifestKeyFileType:
+				ai.typ = aofFileType(argv[i+1][0])
+			case aofManifestKeyFileStartoffset:
+				start, err := strconv.ParseInt(argv[i+1], 10, 64)
+				if err != nil {
+					return nil, errors.Join(err, errors.New("invalid startOffset value"))
+				}
+				ai.startOffset = start
+			case aofManifestKeyFileEndoffset:
+				end, err := strconv.ParseInt(argv[i+1], 10, 64)
+				if err != nil {
+					return nil, errors.Join(err, errors.New("invalid endOffset value"))
+				}
+				ai.endOffset = end
+			default:
+			}
+		}
+
+		if ai.name == "" || ai.seq == -1 || ai.typ == '0' {
+			return nil, errors.New("invalid AOF manifest format")
+		}
+
+		switch ai.typ {
+		case base:
+			am.baseAofInfo = ai
+			am.currBaseFileSeq = ai.seq
+		case hist:
+			am.histAofInfos = append(am.histAofInfos, ai)
+		case incr:
+			if ai.seq <= maxSeq {
+				return nil, errors.New("found a non-monotonic sequence number")
+			}
+			am.incrAofInfos = append(am.incrAofInfos, ai)
+			am.currIncrFileSeq = ai.seq
+			maxSeq = ai.seq
+		default:
+			return nil, errors.New("unknown AOF manifest type")
+		}
+	}
+	return am, nil
+}
+
+func (am *aofManifest) fileNum() int {
+	fileNum := len(am.incrAofInfos)
+	if am.baseAofInfo != nil {
+		fileNum++
+	}
+	return fileNum
+}
+
+const manifestNameSuffix = ".manifest"
+
+func aofManifestFilename(aof string) string {
+	return fmt.Sprintf("%s%s", aof, manifestNameSuffix)
 }
