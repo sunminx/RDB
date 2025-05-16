@@ -11,7 +11,7 @@
 //  1. The RDB part and the AOF part are no longer saved in one file.
 //  2. The AOF file is split into multiple small files (similar to the segmentation of WAL logs)
 //     to avoid a single AOF file being too large.
-//  3. Introduce the manifest file to record the AOF shard information.
+//  3. Introduce the manifest file to track the newly generated base file and incremental file.
 //
 // appendonlydir/
 // ├── appendonly.aof.1.base.rdb   # basic data in RDB format
@@ -57,34 +57,23 @@ func newAofer(db *db.DB) *Aofer {
 	}
 }
 
-func (aof *Aofer) setFile(filename string, mode byte) error {
-	var file *os.File
+func (aof *Aofer) setFile(file *os.File, mode byte) error {
 	if mode == 'r' {
 		aof.closeFile()
-		file, err := os.Open(filename)
-		if err != nil {
-			return errors.Join(err, errors.New("failed open faile "+filename))
-		}
 		rd, err := rio.NewReader(file)
 		if err != nil {
-			return errors.Join(err, errors.New("failed new rio.Reader "+filename))
+			return errors.Join(err, errors.New("failed new rio.Reader"))
 		}
 		aof.rd = rd
 	} else if mode == 'w' {
 		aof.closeFile()
-		file, err := os.Create(filename)
-		if err != nil {
-			return errors.Join(err, errors.New("failed create file "+filename))
-		}
 		wr, err := rio.NewWriter(file)
 		if err != nil {
-			return errors.Join(err, errors.New("failed new rio.Writer "+filename))
+			return errors.Join(err, errors.New("failed new rio.Writer"))
 		}
 		aof.wr = wr
-	}
-
-	if file == nil {
-		return errors.New("invalid mode param")
+	} else {
+		return errors.New("invalid mode")
 	}
 	aof.file = file
 	return nil
@@ -519,6 +508,27 @@ func newAofInfo() *aofInfo {
 	}
 }
 
+func (ai *aofInfo) format() []byte {
+	buf := make([]byte, 0)
+	buf = append(buf, []byte(aofManifestKeyFileName)...)
+	buf = append(buf, ' ')
+	buf = append(buf, []byte(ai.name)...)
+	buf = append(buf, []byte(aofManifestKeyFileSeq)...)
+	buf = append(buf, ' ')
+	buf = append(buf, []byte(strconv.FormatInt(ai.seq, 10))...)
+	buf = append(buf, []byte(aofManifestKeyFileType)...)
+	buf = append(buf, ' ')
+	buf = append(buf, byte(ai.typ))
+	buf = append(buf, []byte(aofManifestKeyFileStartoffset)...)
+	buf = append(buf, ' ')
+	buf = append(buf, []byte(strconv.FormatInt(ai.startOffset, 10))...)
+	buf = append(buf, []byte(aofManifestKeyFileEndoffset)...)
+	buf = append(buf, ' ')
+	buf = append(buf, []byte(strconv.FormatInt(ai.endOffset, 10))...)
+	buf = append(buf, []byte("\n")...)
+	return buf
+}
+
 const manifestMaxLine = 1024
 
 // AOF manifest key.
@@ -633,8 +643,131 @@ func (am *aofManifest) fileNum() int {
 	return fileNum
 }
 
-const manifestNameSuffix = ".manifest"
+const (
+	baseFileSuffix     = ".base"
+	incrFileSuffix     = ".incr"
+	rdbFormatSuffix    = ".rdb"
+	aofFormatSuffix    = ".aof"
+	manifestNameSuffix = ".manifest"
+	tempFileNamePrefix = "temp-"
+)
+
+func (am *aofManifest) nextBaseAofName(server *networking.Server) string {
+	if am.baseAofInfo != nil {
+		am.baseAofInfo.typ = hist
+		am.histAofInfos = append(am.histAofInfos, am.baseAofInfo)
+	}
+	ai := newAofInfo()
+	formatSuffix := util.Cond(server.AofUseRdbPreamble, rdbFormatSuffix, aofFormatSuffix)
+	am.currBaseFileSeq++
+	ai.name = fmt.Sprintf("%s.%d%s%s", server.AofFilename, am.currBaseFileSeq,
+		formatSuffix, aofFormatSuffix)
+	ai.typ = base
+	ai.seq = am.currBaseFileSeq
+	am.baseAofInfo = ai
+	return ai.name
+
+}
+
+func (am *aofManifest) nextIncrAofName(server *networking.Server) string {
+	ai := newAofInfo()
+	ai.typ = incr
+	am.currIncrFileSeq++
+	ai.name = fmt.Sprintf("%s.%d%s%s", server.AofFilename, am.currIncrFileSeq,
+		incrFileSuffix, aofFormatSuffix)
+	ai.seq = am.currIncrFileSeq
+	am.incrAofInfos = append(am.incrAofInfos, ai)
+	return ai.name
+}
+
+func (am *aofManifest) moveIncrAofToHist() {
+	ln := len(am.incrAofInfos)
+	if ln < 2 {
+		return
+	}
+	am.histAofInfos = append(am.histAofInfos, am.incrAofInfos[:ln-1]...)
+	am.incrAofInfos = am.incrAofInfos[ln-1:]
+}
+
+func (am *aofManifest) persist(server *networking.Server) error {
+	tempManifestFilename := TempAofManifestFilename(server.AofFilename)
+	tempManifestFilepath := makePath(server.AofDirname, tempManifestFilename)
+	file, err := os.Create(tempManifestFilepath)
+	if err != nil {
+		return errors.New("failed create temp AOF manifest file")
+	}
+
+	defer func() {
+		if file != nil {
+			file.Close()
+			os.Remove(tempManifestFilepath)
+		}
+	}()
+
+	var buf []byte
+	if am.baseAofInfo != nil {
+		buf = am.baseAofInfo.format()
+		if err := write(file, buf); err != nil {
+			return errors.Join(err, errors.New("failed write AOF base manifest"))
+		}
+	}
+
+	for _, ai := range am.histAofInfos {
+		buf = ai.format()
+		if err := write(file, buf); err != nil {
+			return errors.Join(err, errors.New("failed write AOF hist manifest"))
+		}
+	}
+
+	for _, ai := range am.incrAofInfos {
+		buf = ai.format()
+		if err := write(file, buf); err != nil {
+			return errors.Join(err, errors.New("failed write AOF incr manifest"))
+		}
+	}
+
+	file.Close()
+	file = nil
+
+	manifestFilename := aofManifestFilename(server.AofFilename)
+	manifestFilenpath := makePath(server.AofDirname, manifestFilename)
+	if err := os.Rename(tempManifestFilepath, manifestFilenpath); err != nil {
+		os.Remove(tempManifestFilepath)
+		return err
+	}
+	os.Remove(tempManifestFilepath)
+	return nil
+}
+
+func (am *aofManifest) deleteAofHistFiles(server *networking.Server) {
+	for _, ai := range am.histAofInfos {
+		filepath := makePath(server.AofDirname, ai.name)
+		if err := os.Remove(filepath); err != nil {
+			slog.Warn("failed delete AOF hist file", "filepath", filepath, "err", err)
+		}
+	}
+}
+
+func write(file *os.File, p []byte) error {
+	total := len(p)
+	for total > 0 {
+		n, err := file.Write(p)
+		if err != nil {
+			return err
+		}
+		total -= n
+	}
+	return nil
+}
 
 func aofManifestFilename(aof string) string {
 	return fmt.Sprintf("%s%s", aof, manifestNameSuffix)
+}
+
+func TempAofManifestFilename(aof string) string {
+	return tempFileNamePrefix + aof + manifestNameSuffix
+}
+
+func tempIncrAofName(aof string) string {
+	return tempFileNamePrefix + aof + incrFileSuffix
 }

@@ -17,42 +17,44 @@ var assert = debug.Assert
 
 type Server struct {
 	gnet.BuiltinEventEngine
-	MaxIdleTime        int64
-	TcpKeepalive       int
-	ProtectedMode      bool
-	TcpBacklog         int
-	Ip                 string
-	Port               int
-	ProtoAddr          string
-	MaxFd              int
-	Clients            []*Client
-	cmds               []cmd.Command
-	Requirepass        bool
-	DB                 *db.DB
-	CronLoops          int64
-	Hz                 int
-	LogLevel           string
-	LogPath            string
-	Version            string
-	RunnableClientCh   chan *Client
-	CmdLock            *sync.RWMutex
-	UnlockNotice       chan struct{}
-	Dumper             dumper
-	RdbVersion         int
-	RdbFilename        string
-	RdbChildType       int
-	RdbChildRunning    atomic.Bool
-	RdbSaveTimeStart   int64
-	RdbSaveTimeUsed    int64
-	BackgroundDoneChan chan uint8
-	SaveParams         []SaveParam
-	UnixTime           int64
-	LastSave           int64
-	Dirty              int
-	AofFilename        string
-	AofDirname         string
-	AofLoadTruncated   bool
-	LoadingLoadedBytes int64
+	MaxIdleTime         int64
+	TcpKeepalive        int
+	ProtectedMode       bool
+	TcpBacklog          int
+	Ip                  string
+	Port                int
+	ProtoAddr           string
+	MaxFd               int
+	Clients             []*Client
+	cmds                []cmd.Command
+	Requirepass         bool
+	DB                  *db.DB
+	CronLoops           int64
+	Hz                  int
+	LogLevel            string
+	LogPath             string
+	Version             string
+	RunnableClientCh    chan *Client
+	CmdLock             *sync.RWMutex
+	UnlockNotice        chan struct{}
+	Dumper              dumper
+	RdbVersion          int
+	RdbFilename         string
+	RdbChildType        int
+	RdbChildRunning     atomic.Bool
+	RdbSaveTimeStart    int64
+	RdbSaveTimeUsed     int64
+	BackgroundDoneChan  chan uint8
+	SaveParams          []SaveParam
+	UnixTime            int64
+	LastSave            int64
+	Dirty               int
+	AofFilename         string
+	AofDirname          string
+	AofLoadTruncated    bool
+	AofUseRdbPreamble   bool
+	AofRewriteTimeStart int64
+	LoadingLoadedBytes  int64
 }
 
 type SaveParam struct {
@@ -63,6 +65,8 @@ type SaveParam struct {
 type dumper interface {
 	RdbSaveBackground(string, *Server) bool
 	RdbSaveBackgroundDoneHandler(*Server)
+	AofRewriteBackground(string, *Server) bool
+	AofRewriteBackgroundDoneHandler(*Server)
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {

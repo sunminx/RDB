@@ -33,7 +33,6 @@ func (d Dumper) RdbSaveBackground(filename string, server *networking.Server) bo
 	if !server.RdbChildRunning.CompareAndSwap(false, true) {
 		return nosave
 	}
-
 	now := time.Now()
 	go rdbSave(filename, server)
 	slog.Info("background saving started")
@@ -113,7 +112,7 @@ const (
 	noRewrite = false
 )
 
-func aofLoad(server *networking.Server) bool {
+func AofLoad(server *networking.Server) bool {
 	filepath := server.AofDirname + "/" + aofManifestFilename(server.AofDirname)
 	am, err := createAofManifest(filepath)
 	if err == nil {
@@ -142,7 +141,13 @@ func aofLoadChunkMode(am *aofManifest, server *networking.Server) bool {
 	if am.baseAofInfo != nil {
 		currFileIdx++
 		filename := am.baseAofInfo.name
-		if err := aof.setFile(filename, 'r'); err != nil {
+		file, err := os.Create(filename)
+		if err != nil {
+			slog.Warn("failed create temp aof file", "err", err)
+		}
+		defer file.Close()
+
+		if err := aof.setFile(file, 'r'); err != nil {
 			slog.Warn("failed loading base aof file", "err", err)
 			ret = aofOpenErr
 			goto cleanup
@@ -167,7 +172,13 @@ func aofLoadChunkMode(am *aofManifest, server *networking.Server) bool {
 	for _, incrAofInfo := range am.incrAofInfos {
 		currFileIdx++
 		filename := incrAofInfo.name
-		if err := aof.setFile(filename, 'r'); err != nil {
+		file, err := os.Create(filename)
+		if err != nil {
+			slog.Warn("failed create temp aof file", "err", err)
+		}
+		defer file.Close()
+
+		if err := aof.setFile(file, 'r'); err != nil {
 			slog.Warn("failed loading incr aof file", "err", err)
 			ret = aofOpenErr
 			goto cleanup
@@ -197,11 +208,120 @@ cleanup:
 func aofLoadUnChunkMode(server *networking.Server) bool {
 	aof := newAofer(server.DB)
 	filename := server.AofFilename
-	if err := aof.setFile(filename, 'r'); err != nil {
+	file, err := os.Create(filename)
+	if err != nil {
+		slog.Warn("failed create temp aof file", "err", err)
+	}
+	defer file.Close()
+
+	if err := aof.setFile(file, 'r'); err != nil {
 		slog.Warn("can't open aof file", "err", err)
 		return false
 	}
 	ret := aof.loadSingleFile(filename, server)
-	aof.closeFile()
 	return ret == aofOk || ret == aofTruncated
+}
+
+func (d Dumper) AofRewriteBackground(filename string, server *networking.Server) bool {
+	if !server.RdbChildRunning.CompareAndSwap(false, true) {
+		return nosave
+	}
+	now := time.Now()
+	go aofRewrite(filename, server)
+	server.AofRewriteTimeStart = now.UnixMilli()
+	return true
+}
+
+func aofRewrite(filename string, server *networking.Server) bool {
+	tempFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
+	file, err := os.Create(tempFilename)
+	if err != nil {
+		slog.Warn("failed create temp aof file", "err", err)
+	}
+
+	defer func() {
+		if file != nil {
+			file.Close()
+		}
+	}()
+
+	if server.AofUseRdbPreamble {
+		rdber, err := newRdbSaver(file, server.DB, newRdberInfo(server))
+		if err != nil {
+			slog.Warn("cannot create rdber for saving")
+			return false
+		}
+		if err = rdber.save(); err != nil {
+			slog.Warn("failed save db by rdber", "err", err)
+			return false
+		}
+	} else {
+		aofer := newAofer(server.DB)
+		if err := aofer.setFile(file, 'w'); err != nil {
+			slog.Warn("failed init aofer", "err", err)
+			return false
+		}
+		if err := aofer.rewrite(0); err != nil {
+			slog.Warn("failed rewrite aof", "err", err)
+			return false
+		}
+	}
+
+	if err := file.Sync(); err != nil {
+		slog.Warn("failed sync rewritten temp aof file", "err", err)
+		return false
+	}
+	if err := file.Close(); err != nil {
+		slog.Warn("failed close rewritten temp aof file", "err", err)
+		return false
+	}
+	file = nil
+	if err := os.Rename(tempFilename, filename); err != nil {
+		slog.Warn("failed rename rewritten aof file", "err", err)
+		return false
+	}
+	return true
+}
+
+func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
+	start := time.Now()
+
+	filepath := makePath(server.AofDirname, aofManifestFilename(server.AofFilename))
+	am, err := createAofManifest(filepath)
+	if err != nil {
+		slog.Warn("failed create aofManifest instance", "err", err)
+		return
+	}
+
+	tempBaseFilename := fmt.Sprintf("temp-rewriteaof-bg-%d.aof", os.Getpid())
+	baseFilename := am.nextBaseAofName(server)
+	if err := os.Rename(tempBaseFilename,
+		makePath(server.AofDirname, baseFilename)); err != nil {
+		slog.Warn("failed trying to rename temporary AOF base file", "err", err)
+		return
+	}
+
+	tempIncrFilename := tempIncrAofName(server.AofFilename)
+	incrFilename := am.nextIncrAofName(server)
+	if err := os.Rename(
+		makePath(server.AofDirname, tempIncrFilename),
+		makePath(server.AofDirname, incrFilename)); err != nil {
+		slog.Warn("failed trying to rename tempory AOF incr file", "err", err)
+		return
+	}
+
+	am.moveIncrAofToHist()
+
+	if err := am.persist(server); err != nil {
+		slog.Warn("failed persist new AOF manifest file", "err", err)
+		return
+	}
+
+	am.deleteAofHistFiles(server)
+	slog.Info(fmt.Sprintf("Background AOF rewrite signal handler took %d", time.Since(start)))
+	return
+}
+
+func makePath(path, filename string) string {
+	return path + "/" + filename
 }
