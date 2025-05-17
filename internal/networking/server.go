@@ -11,6 +11,7 @@ import (
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/debug"
+	"github.com/sunminx/RDB/pkg/util"
 )
 
 var assert = debug.Assert
@@ -54,6 +55,11 @@ type Server struct {
 	AofLoadTruncated    bool
 	AofUseRdbPreamble   bool
 	AofRewriteTimeStart int64
+	AofState            uint8
+	AofRewriteBaseSize  int
+	AofCurrSize         int
+	AofRewriteMinSize   int
+	AofRewritePerc      int
 	LoadingLoadedBytes  int64
 }
 
@@ -63,9 +69,9 @@ type SaveParam struct {
 }
 
 type dumper interface {
-	RdbSaveBackground(string, *Server) bool
+	RdbSaveBackground(*Server) bool
 	RdbSaveBackgroundDoneHandler(*Server)
-	AofRewriteBackground(string, *Server) bool
+	AofRewriteBackground(*Server) bool
 	AofRewriteBackgroundDoneHandler(*Server)
 }
 
@@ -231,6 +237,7 @@ const (
 
 const (
 	DoneRdbBgsave uint8 = 1
+	DoneAofBgsave uint8 = 2
 )
 
 func (s *Server) cron() {
@@ -246,6 +253,8 @@ func (s *Server) cron() {
 		case t := <-s.BackgroundDoneChan:
 			if t == DoneRdbBgsave {
 				s.Dumper.RdbSaveBackgroundDoneHandler(s)
+			} else if t == DoneAofBgsave {
+				s.Dumper.AofRewriteBackgroundDoneHandler(s)
 			}
 		default:
 		}
@@ -258,9 +267,18 @@ func (s *Server) cron() {
 
 				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...",
 					sp.Changes, sp.Seconds))
-				_ = s.Dumper.RdbSaveBackground(s.RdbFilename, s)
+				_ = s.Dumper.RdbSaveBackground(s)
 				break
 			}
+		}
+
+		if s.AofState == 1 && s.AofRewritePerc > 0 && s.AofCurrSize > s.AofRewriteMinSize {
+			base := util.Cond(s.AofRewriteBaseSize > 0, s.AofRewriteBaseSize, 1)
+			growth := (s.AofCurrSize*100)/base - 100
+			if growth >= s.AofRewritePerc {
+				_ = s.Dumper.AofRewriteBackground(s)
+			}
+
 		}
 	}
 }

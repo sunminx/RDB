@@ -29,6 +29,7 @@ import (
 	"os"
 	"strconv"
 	"strings"
+	"syscall"
 
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
@@ -723,6 +724,9 @@ func write(file *os.File, p []byte) error {
 	for total > 0 {
 		n, err := file.Write(p)
 		if err != nil {
+			if err == syscall.EINTR {
+				continue
+			}
 			return err
 		}
 		total -= n

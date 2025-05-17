@@ -29,12 +29,12 @@ const (
 	rdbChildTypeSocket = 2 // rdb is written to slave socket.
 )
 
-func (d Dumper) RdbSaveBackground(filename string, server *networking.Server) bool {
+func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 	if !server.RdbChildRunning.CompareAndSwap(false, true) {
 		return nosave
 	}
 	now := time.Now()
-	go rdbSave(filename, server)
+	go rdbSave(server)
 	slog.Info("background saving started")
 	server.RdbSaveTimeStart = now.UnixMilli()
 	server.RdbChildType = rdbChildTypeDisk
@@ -45,7 +45,8 @@ type rdberInfo struct {
 	version int
 }
 
-func rdbSave(filename string, server *networking.Server) bool {
+func rdbSave(server *networking.Server) bool {
+	filename := server.RdbFilename
 	tempfile := fmt.Sprintf("temp-%d.rdb", os.Getgid())
 	file, err := os.Create(tempfile)
 	if err != nil {
@@ -232,17 +233,18 @@ func aofLoadUnChunkMode(server *networking.Server) bool {
 	return ret == aofOk || ret == aofTruncated
 }
 
-func (d Dumper) AofRewriteBackground(filename string, server *networking.Server) bool {
+func (d Dumper) AofRewriteBackground(server *networking.Server) bool {
 	if !server.RdbChildRunning.CompareAndSwap(false, true) {
 		return nosave
 	}
 	now := time.Now()
-	go aofRewrite(filename, server)
+	go aofRewrite(server)
+	slog.Info("background saving started")
 	server.AofRewriteTimeStart = now.UnixMilli()
 	return true
 }
 
-func aofRewrite(filename string, server *networking.Server) bool {
+func aofRewrite(server *networking.Server) bool {
 	tempFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
 	file, err := os.Create(tempFilename)
 	if err != nil {
@@ -287,10 +289,11 @@ func aofRewrite(filename string, server *networking.Server) bool {
 		return false
 	}
 	file = nil
-	if err := os.Rename(tempFilename, filename); err != nil {
+	if err := os.Rename(tempFilename, server.AofFilename); err != nil {
 		slog.Warn("failed rename rewritten aof file", "err", err)
 		return false
 	}
+	server.BackgroundDoneChan <- networking.DoneAofBgsave
 	return true
 }
 

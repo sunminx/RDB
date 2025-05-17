@@ -7,6 +7,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 
@@ -30,53 +31,53 @@ func Load(server *networking.Server, filename string) {
 				continue
 			}
 
-			args, valid := splitArgs(line)
+			argv, valid := splitArgs(line)
 			if !valid {
 				continue
 			}
 
-			args[0] = strings.ToLower(args[0])
+			argv[0] = strings.ToLower(argv[0])
 			switch {
-			case args[0] == "timeout" && len(args) == 2:
+			case argv[0] == "timeout" && len(argv) == 2:
 				var timeout int64
-				timeout, err = strconv.ParseInt(args[1], 10, 64)
+				timeout, err = strconv.ParseInt(argv[1], 10, 64)
 				if err != nil || timeout < 0 {
 					err = errors.New("invalid timeout value")
 					goto loaderr
 				}
 				server.MaxIdleTime = timeout
-			case args[0] == "tcp-keepalive" && len(args) == 2:
+			case argv[0] == "tcp-keepalive" && len(argv) == 2:
 				var tcpKeepalive int
-				tcpKeepalive, err = strconv.Atoi(args[1])
+				tcpKeepalive, err = strconv.Atoi(argv[1])
 				if err != nil || tcpKeepalive < 0 {
 					err = errors.New("invalid tcp-keepalive value")
 					goto loaderr
 				}
 				server.TcpKeepalive = tcpKeepalive
-			case args[0] == "protected-mode" && len(args) == 2:
-				yesorno, valid := yesnotoi(args[1])
+			case argv[0] == "protected-mode" && len(argv) == 2:
+				yesorno, valid := yesnotoi(argv[1])
 				if !valid {
 					err = errors.New(`argument must be 'yes' or 'no'`)
 					goto loaderr
 				}
 				server.ProtectedMode = yesorno
-			case args[0] == "bind" && len(args) == 2:
-				server.Ip = args[1]
-			case args[0] == "port" && len(args) == 2:
-				if port, err := strconv.Atoi(args[1]); err == nil {
+			case argv[0] == "bind" && len(argv) == 2:
+				server.Ip = argv[1]
+			case argv[0] == "port" && len(argv) == 2:
+				if port, err := strconv.Atoi(argv[1]); err == nil {
 					server.Port = port
 				}
-			case args[0] == "loglevel" && len(args) == 2:
-				server.LogLevel = args[1]
-			case args[0] == "logfile" && len(args) == 2:
-				server.LogPath = args[1]
-			case args[0] == "save":
-				if len(args) == 3 {
-					seconds, err := strconv.Atoi(args[1])
+			case argv[0] == "loglevel" && len(argv) == 2:
+				server.LogLevel = argv[1]
+			case argv[0] == "logfile" && len(argv) == 2:
+				server.LogPath = argv[1]
+			case argv[0] == "save":
+				if len(argv) == 3 {
+					seconds, err := strconv.Atoi(argv[1])
 					if err != nil {
 						goto loaderr
 					}
-					changes, err := strconv.Atoi(args[2])
+					changes, err := strconv.Atoi(argv[2])
 					if err != nil {
 						goto loaderr
 					}
@@ -85,8 +86,36 @@ func Load(server *networking.Server, filename string) {
 					}
 					saveParam := networking.SaveParam{Seconds: seconds, Changes: changes}
 					server.SaveParams = append(server.SaveParams, saveParam)
-				} else if len(args) == 2 && args[1] == "" {
+				} else if len(argv) == 2 && argv[1] == "" {
 					server.SaveParams = nil
+				}
+			case argv[0] == "appendonly" && len(argv) == 2:
+				if argv[1] == "yes" {
+					server.AofState = 1
+				}
+			case argv[0] == "auto-aof-rewrite-percentage" && len(argv) == 2:
+				if perc, err := strconv.Atoi(argv[1]); err != nil {
+					server.AofRewritePerc = perc
+				}
+			case argv[0] == "auto-aof-rewrite-min-size" && len(argv) == 2:
+				re := regexp.MustCompile(`(\d+)([k|kb|m|mb|g|gb])`)
+				mt := re.FindStringSubmatch(argv[1])
+				if len(mt) == 3 {
+					v, _ := strconv.Atoi(mt[1])
+					unit := mt[2]
+					if unit == "k" {
+						server.AofRewriteMinSize = 1000 * v
+					} else if unit == "kb" {
+						server.AofRewriteMinSize = 1024 * v
+					} else if unit == "m" {
+						server.AofRewriteMinSize = 1000 * 1000 * v
+					} else if unit == "mb" {
+						server.AofRewriteMinSize = 1024 * 1024 * v
+					} else if unit == "g" {
+						server.AofRewriteMinSize = 1000 * 1000 * 1000 * v
+					} else if unit == "gb" {
+						server.AofRewriteMinSize = 1024 * 1024 * 1024 * v
+					}
 				}
 			default:
 			}
@@ -107,11 +136,11 @@ loaderr:
 
 func splitArgs(line string) ([]string, bool) {
 	line = strings.Trim(line, " ")
-	args := strings.Split(line, " ")
-	if len(args) < 2 {
-		return args, false
+	argv := strings.Split(line, " ")
+	if len(argv) < 2 {
+		return argv, false
 	}
-	return args, true
+	return argv, true
 }
 
 func yesnotoi(arg string) (bool, bool) {
