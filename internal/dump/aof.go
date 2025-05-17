@@ -356,8 +356,7 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 		}
 
 		argv := make([][]byte, argc, argc)
-		var i int64
-		for ; i < argc; i++ {
+		for i := int64(0); i < argc; i++ {
 			p, isPrefix, err := aof.rd.ReadLine()
 			if isPrefix || err != nil {
 				slog.Warn("unrecoverable error reading the append only file", "filename", filename)

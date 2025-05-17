@@ -401,8 +401,7 @@ func (c *Client) QueueMultiCommand() {
 func (c *Client) MultiExec() {
 	multiState := c.multiState
 	c.addReplyMultibulkLen(int64(multiState.cnt))
-	var i int64
-	for ; i < multiState.cnt; i++ {
+	for i := int64(0); i < multiState.cnt; i++ {
 		multiCmd := multiState.commands[i]
 		c.argc = multiCmd.argc
 		c.argv = multiCmd.argv
