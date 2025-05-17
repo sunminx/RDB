@@ -50,6 +50,7 @@ type Server struct {
 	UnixTime            int64
 	LastSave            int64
 	Dirty               int
+	AofChildRunning     atomic.Bool
 	AofFilename         string
 	AofDirname          string
 	AofLoadTruncated    bool
@@ -263,7 +264,7 @@ func (s *Server) cron() {
 		// we have to save/rewrite now.
 		for _, sp := range s.SaveParams {
 			if s.Dirty >= sp.Changes &&
-				int(s.UnixTime-s.LastSave) > 1e3*sp.Seconds {
+				int(s.UnixTime-s.LastSave) > 1000*sp.Seconds {
 
 				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...",
 					sp.Changes, sp.Seconds))
@@ -307,5 +308,5 @@ func (s *Server) delClient(fd int) {
 }
 
 func (s *Server) isBgsaveOrAofRewriteRunning() bool {
-	return s.RdbChildRunning.Load()
+	return s.RdbChildRunning.Load() || s.AofChildRunning.Load()
 }

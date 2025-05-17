@@ -106,7 +106,7 @@ func rdbBgsaveDoneHandlerDisk(server *networking.Server) {
 	server.LastSave = now.UnixMilli()
 	server.RdbSaveTimeUsed = server.LastSave - server.RdbSaveTimeStart
 	server.RdbSaveTimeStart = -1
-	server.RdbChildRunning.CompareAndSwap(true, false)
+	server.RdbChildRunning.Store(false)
 }
 
 const (
@@ -234,7 +234,7 @@ func aofLoadUnChunkMode(server *networking.Server) bool {
 }
 
 func (d Dumper) AofRewriteBackground(server *networking.Server) bool {
-	if !server.RdbChildRunning.CompareAndSwap(false, true) {
+	if !server.AofChildRunning.CompareAndSwap(false, true) {
 		return nosave
 	}
 	now := time.Now()
@@ -341,6 +341,7 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 	}
 
 	am.deleteAofHistFiles(server)
+	server.AofChildRunning.Store(false)
 	slog.Info(fmt.Sprintf("Background AOF rewrite signal handler took %d", time.Since(start)))
 	return
 }
