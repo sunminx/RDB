@@ -42,6 +42,15 @@ func (r *Reader) EOF() bool {
 	return err == io.EOF
 }
 
+func (r *Reader) Reset() error {
+	_, err := r.Seek(0, 0)
+	if err != nil {
+		return err
+	}
+	r.rd.Reset(r.File)
+	return nil
+}
+
 type Writer struct {
 	wr              *bufio.Writer
 	updateCksum     bool

@@ -3,3 +3,4 @@
 RDB
 tests/__pycache__/
 internal/dump/rdb.file
+internal/dump/aof.file

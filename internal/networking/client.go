@@ -78,10 +78,14 @@ func newMultiState() *multiState {
 }
 
 func NewClient(conn gnet.Conn, db *db.DB) *Client {
+	fd := -1
+	if conn != nil {
+		fd = conn.Fd()
+	}
 	return &Client{
 		Conn:          conn,
 		DB:            db,
-		fd:            conn.Fd(),
+		fd:            fd,
 		querybuf:      make([]byte, 0),
 		multibulklen:  0,
 		bulklen:       -1,

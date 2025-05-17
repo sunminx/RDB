@@ -207,23 +207,25 @@ func (aof *Aofer) writeBulkObject(robj *obj.Robj) bool {
 
 func (aof *Aofer) writeBulkInt(n int64) bool {
 	bytes := util.Int64ToBytes(n)
-	return aof.writeBulkString(bytes)
+	aof.wr.Write([]byte{'$'})
+	aof.wr.Write(bytes)
+	aof.wr.Write([]byte("\r\n"))
+	return true
 }
 
 func (aof *Aofer) writeBulkString(s []byte) bool {
 	ln := int64(len(s))
-	var err error
 	if !aof.writeBulkInt(ln) {
 		slog.Warn("failed write bulk string in rewrite aof")
 		return noRewrite
 	}
 	if ln > 0 {
-		if _, err = aof.wr.Write(s); err != nil {
+		if _, err := aof.wr.Write(s); err != nil {
 			slog.Warn("failed write bulk string in rewrite aof")
 			return noRewrite
 		}
 	}
-	if _, err = aof.wr.Write([]byte("\r\n")); err != nil {
+	if _, err := aof.wr.Write([]byte("\r\n")); err != nil {
 		slog.Warn("failed write bulk string in rewrite aof", "err", err)
 		return noRewrite
 	}
@@ -285,12 +287,12 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 	// Check if the AOF file is in RDB format (it may be RDB encoded base AOF
 	// or old style RDB-preamble AOF). In that case we need to load the RDB file
 	// and later continue loading the AOF tail if it is an old style RDB-preamble AOF.
-	preambleMode := false
+	preambleMode := true
 	p, err := aof.readRaw(5)
 	if err != nil || string(p) != "REDIS" {
-		preambleMode = true
+		preambleMode = false
 	}
-	if _, err = aof.rd.Seek(0, 0); err != nil {
+	if err = aof.rd.Reset(); err != nil {
 		slog.Warn("failed seek to the starting position of the AOF file", "filename", filename)
 		return aofFailed
 	}
@@ -347,12 +349,12 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			continue
 		}
 		if p[0] != '*' {
-			slog.Warn("invalid protocol")
+			slog.Warn("invalid protocol, not found *")
 			return aofFailed
 		}
 		argc, err := strconv.ParseInt(string(p[1:]), 10, 64)
 		if err != nil || argc < 1 {
-			slog.Warn("invalid protocol")
+			slog.Warn("invalid protocol, argc  is less than 1")
 			return aofFailed
 		}
 
@@ -371,12 +373,12 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			}
 			ln, err := strconv.ParseInt(string(p[1:]), 10, 64)
 			if err != nil || ln < 1 {
-				slog.Warn("invalid protocol")
+				slog.Warn("invalid protocol, invalid bulk len")
 				return aofFailed
 			}
 			p, err = aof.readRaw(int(ln))
 			if err != nil {
-				slog.Warn("invalid protocol")
+				slog.Warn("failed read bulk")
 				return aofFailed
 			}
 
@@ -385,13 +387,14 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			// Discard "CRLF"
 			_, err = aof.readRaw(2)
 			if err != nil {
-				slog.Warn("invalid protocol")
+				slog.Warn(`failed discard \r\n`)
 				return aofFailed
 			}
 		}
 
 		aof.fakeCli.SetArgument(argv)
-		command, err := aof.lookupCommand(string(argv[0]), int(argc))
+		name := strings.ToLower(string(argv[0]))
+		command, err := aof.lookupCommand(name, int(argc))
 		if err != nil {
 			slog.Warn("failed exec command when loading AOF file", "err", err)
 			return aofFailed

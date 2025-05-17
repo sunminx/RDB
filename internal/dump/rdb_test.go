@@ -34,7 +34,7 @@ func newMockDB() *db.DB {
 
 func newMockRdb(t *testing.T) *Rdber {
 	mdb := initDB()
-	file, err := os.Create("./rdb.file")
+	file, err := os.Create("rdb.file")
 	if err != nil {
 		t.Error("cannot create rdb.file")
 	}
@@ -42,7 +42,7 @@ func newMockRdb(t *testing.T) *Rdber {
 	if err != nil {
 		t.Error(err)
 	}
-	file, err = os.Open("./rdb.file")
+	file, err = os.Open("rdb.file")
 	if err != nil {
 		t.Error("cannot create rdb.file")
 	}
