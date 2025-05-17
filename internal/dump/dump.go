@@ -53,6 +53,7 @@ func rdbSave(filename string, server *networking.Server) bool {
 			"filename", filename, "err", err)
 		return nosave
 	}
+	defer file.Close()
 
 	rdber, err := newRdbSaver(file, server.DB, newRdberInfo(server))
 	if err != nil {
@@ -113,8 +114,17 @@ const (
 )
 
 func AofLoad(server *networking.Server) bool {
-	filepath := server.AofDirname + "/" + aofManifestFilename(server.AofDirname)
-	am, err := createAofManifest(filepath)
+	filepath := makePath(server.AofDirname,
+		aofManifestFilename(server.AofFilename))
+	file, err := os.Open(filepath)
+	if err != nil {
+		slog.Warn("failed open AOF manifest file",
+			"filepath", filepath, "err", err)
+		return false
+	}
+	defer file.Close()
+
+	am, err := createAofManifest(file)
 	if err == nil {
 		return aofLoadChunkMode(am, server)
 	}
@@ -238,6 +248,7 @@ func aofRewrite(filename string, server *networking.Server) bool {
 	if err != nil {
 		slog.Warn("failed create temp aof file", "err", err)
 	}
+	defer file.Close()
 
 	defer func() {
 		if file != nil {
@@ -285,9 +296,18 @@ func aofRewrite(filename string, server *networking.Server) bool {
 
 func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 	start := time.Now()
+	filepath := makePath(
+		server.AofDirname,
+		aofManifestFilename(server.AofFilename),
+	)
+	file, err := os.Open(filepath)
+	if err != nil {
+		slog.Warn("failed open AOF manifest file",
+			"filepath", filepath, "err", err)
+	}
+	defer file.Close()
 
-	filepath := makePath(server.AofDirname, aofManifestFilename(server.AofFilename))
-	am, err := createAofManifest(filepath)
+	am, err := createAofManifest(file)
 	if err != nil {
 		slog.Warn("failed create aofManifest instance", "err", err)
 		return
@@ -320,8 +340,4 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 	am.deleteAofHistFiles(server)
 	slog.Info(fmt.Sprintf("Background AOF rewrite signal handler took %d", time.Since(start)))
 	return
-}
-
-func makePath(path, filename string) string {
-	return path + "/" + filename
 }

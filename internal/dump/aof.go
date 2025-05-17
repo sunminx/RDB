@@ -1,3 +1,5 @@
+package dump
+
 // The evolution history of aof.
 // Since redis 2.x:
 //  1. All write commands are appended to the AOF file in Text Protocol format (RESP, Redis Serialization Protocol).
@@ -18,8 +20,6 @@
 // ├── appendonly.aof.1.incr.aof   # incremental write commands
 // ├── appendonly.aof.2.incr.aof
 // └── appendonly.aof.manifest    # record sharding information
-
-package dump
 
 import (
 	"errors"
@@ -59,14 +59,12 @@ func newAofer(db *db.DB) *Aofer {
 
 func (aof *Aofer) setFile(file *os.File, mode byte) error {
 	if mode == 'r' {
-		aof.closeFile()
 		rd, err := rio.NewReader(file)
 		if err != nil {
 			return errors.Join(err, errors.New("failed new rio.Reader"))
 		}
 		aof.rd = rd
 	} else if mode == 'w' {
-		aof.closeFile()
 		wr, err := rio.NewWriter(file)
 		if err != nil {
 			return errors.Join(err, errors.New("failed new rio.Writer"))
@@ -91,39 +89,35 @@ func (aof *Aofer) rewrite(timestamp int64) error {
 		switch e.Val.Type() {
 		case obj.TypeString:
 			if !aof.rewriteStringObject(e.Key, e.Val) {
-				goto werr
+				return errors.New("failed rewrite string object, key = " + e.Key)
 			}
 		case obj.TypeList:
 			if !aof.rewriteListObject(e.Key, e.Val) {
-				goto werr
+				return errors.New("failed rewrite list object, key = " + e.Key)
 			}
 		case obj.TypeHash:
 			if !aof.rewriteHashObject(e.Key, e.Val) {
-				goto werr
+				return errors.New("failed rewrite hash object, key = " + e.Key)
 			}
 		default:
+			return errors.New("invalid type of robj in AOF file")
 		}
 
 		expire := aof.db.Expire(e.Key)
 		if expire != -1 {
 			cmd := "*3\r\n$9\r\nPEXPIREAT\r\n"
 			if _, err = aof.wr.Write([]byte(cmd)); err != nil {
-				goto werr
+				return errors.Join(err, errors.New("failed rewrite expire for key "+e.Key))
 			}
 			if !aof.writeBulkString([]byte(e.Key)) {
-				goto werr
+				return errors.Join(err, errors.New("failed rewrite expire for key "+e.Key))
 			}
 			if !aof.writeBulkInt(int64(expire)) {
-				goto werr
+				return errors.Join(err, errors.New("failed rewrite expire for key "+e.Key))
 			}
 		}
 	}
 	return nil
-werr:
-	if err != nil {
-		return errors.Join(err, errors.New("failed rewrite aof"))
-	}
-	return errors.New("failed rewrite aof")
 }
 
 func (aof *Aofer) rewriteStringObject(key string, val *obj.Robj) bool {
@@ -219,37 +213,37 @@ func (aof *Aofer) writeBulkString(s []byte) bool {
 	ln := int64(len(s))
 	var err error
 	if !aof.writeBulkInt(ln) {
-		goto werr
+		slog.Warn("failed write bulk string in rewrite aof")
+		return noRewrite
 	}
 	if ln > 0 {
 		if _, err = aof.wr.Write(s); err != nil {
-			goto werr
+			slog.Warn("failed write bulk string in rewrite aof")
+			return noRewrite
 		}
 	}
 	if _, err = aof.wr.Write([]byte("\r\n")); err != nil {
-		goto werr
+		slog.Warn("failed write bulk string in rewrite aof", "err", err)
+		return noRewrite
 	}
 	return rewrited
-werr:
-	slog.Warn("failed write bulk string in rewrite aof", "err", err)
-	return noRewrite
 }
 
 func (aof *Aofer) writeMultibulkCount(c int64) bool {
 	var err error
 	if _, err = aof.wr.Write([]byte{'*'}); err != nil {
-		goto werr
+		slog.Warn("failed write multibulk count", "err", err)
+		return noRewrite
 	}
 	if _, err = aof.wr.Write(util.Int64ToBytes(c)); err != nil {
-		goto werr
+		slog.Warn("failed write multibulk count", "err", err)
+		return noRewrite
 	}
 	if _, err = aof.wr.Write([]byte("\r\n")); err != nil {
-		goto werr
+		slog.Warn("failed write multibulk count", "err", err)
+		return noRewrite
 	}
 	return rewrited
-werr:
-	slog.Warn("failed write multibulk count", "err", err)
-	return noRewrite
 }
 
 type aofFileType byte
@@ -290,12 +284,16 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 	// Check if the AOF file is in RDB format (it may be RDB encoded base AOF
 	// or old style RDB-preamble AOF). In that case we need to load the RDB file
 	// and later continue loading the AOF tail if it is an old style RDB-preamble AOF.
+	preambleMode := false
 	p, err := aof.readRaw(5)
 	if err != nil || string(p) != "REDIS" {
-		if _, err = aof.rd.Seek(0, 0); err != nil {
-			goto rerr
-		}
-	} else {
+		preambleMode = true
+	}
+	if _, err = aof.rd.Seek(0, 0); err != nil {
+		slog.Warn("failed seek to the starting position of the AOF file", "filename", filename)
+		return aofFailed
+	}
+	if preambleMode {
 		// Since redis 4.x aof-use-rdb-preamble
 		if server.AofFilename == filename {
 			slog.Info("reading RDB preamble from AOF file...")
@@ -303,12 +301,10 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			// Since redis 7.x aof-chunking
 			slog.Info("reading RDB base file on AOF loading...")
 		}
-		if _, err = aof.rd.Seek(0, 0); err != nil {
-			goto rerr
-		}
 		rdber, err := newRdbSaver(aof.file, server.DB, newRdberInfo(server))
 		if err != nil {
-			goto rerr
+			slog.Warn("failed create rdber before loading", "filename", filename, "err", err)
+			return aofFailed
 		}
 		// Laoding RDB part firstly.
 		if err = rdber.Load(); err != nil {
@@ -317,7 +313,7 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			} else {
 				slog.Info("failed reading RDB base file on AOF loading...", "err", err)
 			}
-			goto cleanup
+			return aofFailed
 		} else {
 			pos := aof.rd.Tell()
 			// During the rdb loading stage, the progress is reported only once.
@@ -339,25 +335,24 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 		}
 
 		p, isPrefix, err := aof.rd.ReadLine()
-		if err != nil {
+		if err != nil || isPrefix {
 			if err == io.EOF {
 				break
 			}
-			goto rerr
-		}
-		if isPrefix {
-			goto rerr
+			slog.Warn("unrecoverable error reading the append only file", "filename", filename)
+			return aofFailed
 		}
 		if p[0] == '#' {
 			continue
 		}
 		if p[0] != '*' {
-			err = errors.New("invalid protocol")
-			goto rerr
+			slog.Warn("invalid protocol")
+			return aofFailed
 		}
 		argc, err := strconv.ParseInt(string(p[1:]), 10, 64)
 		if err != nil || argc < 1 {
-			goto rerr
+			slog.Warn("invalid protocol")
+			return aofFailed
 		}
 
 		argv := make([][]byte, argc, argc)
@@ -365,18 +360,24 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 		for ; i < argc; i++ {
 			p, isPrefix, err := aof.rd.ReadLine()
 			if isPrefix || err != nil {
-				goto rerr
+				slog.Warn("unrecoverable error reading the append only file", "filename", filename)
+				return aofFailed
 			}
 			if p[0] != '$' {
-				goto fmterr
+				slog.Warn("Bad file format reading the append only file make a backup "+
+					"of your AOF file, then use ./redis-check-aof --fix <filename.manifest>",
+					"filename", filename)
+				return aofFailed
 			}
 			ln, err := strconv.ParseInt(string(p[1:]), 10, 64)
 			if err != nil || ln < 1 {
-				goto rerr
+				slog.Warn("invalid protocol")
+				return aofFailed
 			}
 			p, err = aof.readRaw(int(ln))
 			if err != nil {
-				goto rerr
+				slog.Warn("invalid protocol")
+				return aofFailed
 			}
 
 			argv[i] = p
@@ -384,27 +385,25 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			// Discard "CRLF"
 			_, err = aof.readRaw(2)
 			if err != nil {
-				goto rerr
+				slog.Warn("invalid protocol")
+				return aofFailed
 			}
 		}
 
 		aof.fakeCli.SetArgument(argv)
 		command, err := aof.lookupCommand(string(argv[0]), int(argc))
 		if err != nil {
-			ret = aofFailed
-			goto rerr
+			slog.Warn("failed exec command when loading AOF file", "err", err)
+			return aofFailed
 		}
-
 		if server.AofLoadTruncated {
 			validBeforeMulti = validUpTo
 		}
-
 		if aof.fakeCli.Multi() && command.Name != "exec" {
 			aof.fakeCli.QueueMultiCommand()
 		} else {
 			command.Proc(aof.fakeCli)
 		}
-
 		if server.AofLoadTruncated {
 			validUpTo = aof.rd.Tell()
 		}
@@ -412,48 +411,32 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 
 	if aof.fakeCli.Multi() {
 		validUpTo = validBeforeMulti
-		goto uxeof
-	}
-loadedok:
-	// Update the amount of data loaded in the last round.
-	loadingAbsProgress(server, aof.rd.Tell()-lastProgressReportSize)
-	goto cleanup
-rerr: /* An error occurred during the loading process. */
-	if !aof.rd.EOF() {
-		slog.Warn("unrecoverable error reading the append only file", "filename", filename)
-		ret = aofFailed
-		goto cleanup
-	}
-uxeof: /* The "Multi" was loaded, but the "Exec" was not. */
-	if server.AofLoadTruncated {
-		if validUpTo == -1 {
-			slog.Warn("last valid command offset is invalid", "filename", filename)
-		} else {
-			if aof.rd.Truncate(validUpTo) != nil {
-				slog.Warn("truncate aof file failed")
+		if server.AofLoadTruncated {
+			if validUpTo == -1 {
+				slog.Warn("last valid command offset is invalid", "filename", filename)
 			} else {
-				// Reset offset which we had loaded.
-				if _, err := aof.rd.Seek(0, 2); err != nil {
-					slog.Warn("can't seek the end of the AOF file", "filename", filename)
+				if aof.rd.Truncate(validUpTo) != nil {
+					slog.Warn("truncate aof file failed")
 				} else {
-					slog.Warn("AOF loaded anyway because aof-load-truncated is enabled", "filename", filename)
-					ret = aofTruncated
-					goto loadedok
+					// Reset offset which we had loaded.
+					if _, err := aof.rd.Seek(0, 2); err != nil {
+						slog.Warn("can't seek the end of the AOF file", "filename", filename)
+					} else {
+						slog.Warn("AOF loaded anyway because aof-load-truncated is enabled", "filename", filename)
+						loadingAbsProgress(server, aof.rd.Tell()-lastProgressReportSize)
+						return aofTruncated
+					}
 				}
 			}
 		}
+		slog.Warn("Unexpected end of file reading the append only file . You can: " +
+			"1) Make a backup of your AOF file, then use ./redis-check-aof --fix <filename.manifest>. " +
+			"2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.")
+		return aofFailed
 	}
-	slog.Warn("Unexpected end of file reading the append only file . You can: " +
-		"1) Make a backup of your AOF file, then use ./redis-check-aof --fix <filename.manifest>. " +
-		"2) Alternatively you can set the 'aof-load-truncated' configuration option to yes and restart the server.")
-	ret = aofFailed
-	goto cleanup
-fmterr: /* Incorrect bulk format. */
-	slog.Warn("Bad file format reading the append only file"+
-		"make a backup of your AOF file, then use ./redis-check-aof --fix <filename.manifest>", "filename", filename)
-	ret = aofFailed
-cleanup:
-	aof.rd.Close()
+
+	// Update the amount of data loaded in the last round.
+	loadingAbsProgress(server, aof.rd.Tell()-lastProgressReportSize)
 	return ret
 }
 
@@ -542,14 +525,7 @@ const (
 
 var errManifestFileNotFound = errors.New("manifest file not found")
 
-func createAofManifest(filepath string) (*aofManifest, error) {
-	file, err := os.Open(filepath)
-	if err != nil {
-		slog.Warn("failed open AOF manifest file", "filepath", filepath)
-		return nil, errManifestFileNotFound
-	}
-	defer file.Close()
-
+func createAofManifest(file *os.File) (*aofManifest, error) {
 	am := newAofManifest()
 	buf := make([]byte, 1024)
 	for {
@@ -726,16 +702,11 @@ func (am *aofManifest) persist(server *networking.Server) error {
 		}
 	}
 
-	file.Close()
-	file = nil
-
 	manifestFilename := aofManifestFilename(server.AofFilename)
 	manifestFilenpath := makePath(server.AofDirname, manifestFilename)
 	if err := os.Rename(tempManifestFilepath, manifestFilenpath); err != nil {
-		os.Remove(tempManifestFilepath)
 		return err
 	}
-	os.Remove(tempManifestFilepath)
 	return nil
 }
 
@@ -761,7 +732,7 @@ func write(file *os.File, p []byte) error {
 }
 
 func aofManifestFilename(aof string) string {
-	return fmt.Sprintf("%s%s", aof, manifestNameSuffix)
+	return aof + manifestNameSuffix
 }
 
 func TempAofManifestFilename(aof string) string {
@@ -770,4 +741,8 @@ func TempAofManifestFilename(aof string) string {
 
 func tempIncrAofName(aof string) string {
 	return tempFileNamePrefix + aof + incrFileSuffix
+}
+
+func makePath(path, filename string) string {
+	return path + "/" + filename
 }

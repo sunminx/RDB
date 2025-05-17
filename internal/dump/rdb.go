@@ -158,16 +158,12 @@ func (rdb *Rdber) Load() error {
 		if !loadOpcode {
 			o := rdb.genericLoadStringObject()
 			if o == nil {
-				goto rerr
+				return errors.New("failed load key in RDB file")
 			}
-			k, ok := o.([]byte)
-			if !ok {
-				goto rerr
-			}
-			key := string(k)
+			key := string(o.([]byte))
 			val := rdb.loadObject(typ)
 			if val == nil {
-				goto rerr
+				return errors.New("failed load val in RDB file")
 			}
 			if expireTime != -1 && expireTime < now {
 				continue
@@ -176,11 +172,9 @@ func (rdb *Rdber) Load() error {
 			if expireTime != -1 {
 				rdb.db.SetExpire(key, time.Duration(expireTime))
 			}
-
 			expireTime = -1
 		}
 	}
-rerr:
 	return nil
 }
 
@@ -282,26 +276,24 @@ func (rdb *Rdber) loadStringIntObject(typ uint8) int64 {
 	if typ == rdbEncInt8 {
 		p = make([]byte, 1, 1)
 		if rdb.readRaw(p) != 1 {
-			goto err
+			return -1
 		}
 		n = int64(p[0])
 	} else if typ == rdbEncInt16 {
 		p = make([]byte, 2, 2)
 		if rdb.readRaw(p) != 2 {
-			goto err
+			return -1
 		}
 		n = int64(p[1]) | int64(p[2])<<8
 	} else if typ == rdbEncInt32 {
 		p = make([]byte, 4, 4)
 		if rdb.readRaw(p) != 4 {
-			goto err
+			return -1
 		}
 		v := uint32(p[0]) | uint32(p[1])<<8 | uint32(p[2])<<16 | uint32(p[3])<<24
 		n = int64(v)
 	}
 	return n
-err:
-	return -1
 }
 
 func (rdb *Rdber) saveKeyValPair(key string, val *obj.Robj, expire int64) bool {
