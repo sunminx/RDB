@@ -354,7 +354,7 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 		}
 		argc, err := strconv.ParseInt(string(p[1:]), 10, 64)
 		if err != nil || argc < 1 {
-			slog.Warn("invalid protocol, argc  is less than 1")
+			slog.Warn("invalid protocol, argc is less than 1")
 			return aofFailed
 		}
 
@@ -449,6 +449,9 @@ func (aof *Aofer) lookupCommand(name string, argc int) (cmd.Command, error) {
 		if (command.Arity > 0 && command.Arity != argc) || (argc < -command.Arity) {
 			return command, fmt.Errorf("wrong number of arguments for %q command", name)
 		}
+	}
+	if !found {
+		return command, errors.New("command " + name + " not found")
 	}
 	return command, nil
 }

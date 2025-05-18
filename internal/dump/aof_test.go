@@ -4,6 +4,8 @@ import (
 	"os"
 	"testing"
 
+	"github.com/sunminx/RDB/internal/hash"
+	"github.com/sunminx/RDB/internal/list"
 	"github.com/sunminx/RDB/internal/networking"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/rio"
@@ -53,4 +55,56 @@ func TestAofRewriteLoadStringObject(t *testing.T) {
 	if ret != aofOk && ret != aofTruncated {
 		t.Error("failed load AOF file")
 	}
+	robj, found := aof.db.LookupKeyRead("key1")
+	if !found {
+		t.Error("failed read key-val")
+	}
+	t.Log(string(robj.Val().(sds.SDS)))
+}
+
+func TestAofRewriteLoadListObject(t *testing.T) {
+	aof := newMockAof(t)
+	key := "key2"
+	ql := list.NewQuicklist()
+	ql.Push([]byte("hello"))
+	val := obj.New(ql, obj.TypeList, obj.EncodingQuicklist)
+	if !aof.rewriteListObject(key, val) {
+		t.Error("failed rewrite string object")
+	}
+	srv := aof.fakeCli.Server
+	ret := aof.loadSingleFile("./aof.file", srv)
+	if ret != aofOk && ret != aofTruncated {
+		t.Error("failed load AOF file")
+	}
+	robj, found := aof.db.LookupKeyRead("key2")
+	if !found {
+		t.Error("failed read key-val")
+	}
+	v, ok := robj.Val().(*list.Quicklist).Index(0)
+	if !ok {
+		t.Error("failed read entry")
+	}
+	t.Log(string(v))
+}
+
+func TestAofRewriteLoadHashObject(t *testing.T) {
+	aof := newMockAof(t)
+	key := "key3"
+	zm := hash.NewZipmap()
+	val := hash.NewRobj(zm)
+	hash.Set(val, []byte("key"), []byte("val"))
+	if !aof.rewriteHashObject(key, val) {
+		t.Error("failed rewrite string object")
+	}
+	srv := aof.fakeCli.Server
+	ret := aof.loadSingleFile("./aof.file", srv)
+	if ret != aofOk && ret != aofTruncated {
+		t.Error("failed load AOF file")
+	}
+	robj, found := aof.db.LookupKeyRead("key3")
+	if !found {
+		t.Error("failed read key-val")
+	}
+	v, _ := hash.Get(robj, []byte("key"))
+	t.Log(string(v))
 }
