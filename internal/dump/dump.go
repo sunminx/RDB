@@ -50,7 +50,7 @@ func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 		slog.Warn("exit bgsave RDB file because of db can't locked")
 		return nosave
 	}
-	server.DB.SetState(db.InPersist)
+	server.DB.SetState(db.InPersistState)
 	server.CmdLock.Unlock()
 	now := time.Now()
 	go rdbSave(server)
@@ -125,7 +125,7 @@ func (d Dumper) RdbSaveBackgroundDoneHandler(server *networking.Server) {
 		return
 	}
 	d.waitResetDBState = notWait
-	server.DB.SetState(db.NotInPersist)
+	server.DB.SetState(db.InMergeState)
 	server.RdbChildRunning.Store(networking.ChildNotInRunning)
 	server.CmdLock.Unlock()
 }
@@ -272,7 +272,7 @@ func (d Dumper) AofRewriteBackground(server *networking.Server) bool {
 		slog.Warn("exit rewrite AOF file because of db can't locked")
 		return false
 	}
-	server.DB.SetState(db.InPersist)
+	server.DB.SetState(db.InPersistState)
 	server.CmdLock.Unlock()
 	now := time.Now()
 	go aofRewrite(server)
@@ -386,7 +386,7 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 		return
 	}
 	d.waitResetDBState = notWait
-	server.DB.SetState(db.NotInPersist)
+	server.DB.SetState(db.InMergeState)
 	server.AofChildRunning.Store(networking.ChildNotInRunning)
 	slog.Info("Background AOF rewrite signal handler done")
 	server.CmdLock.Unlock()

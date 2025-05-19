@@ -1,6 +1,8 @@
 package db
 
 import (
+	"fmt"
+	"log/slog"
 	"time"
 
 	obj "github.com/sunminx/RDB/internal/object"
@@ -9,10 +11,12 @@ import (
 const sdbNum = 2
 
 const (
-	// InPersist indicates that there is currently a coroutine performing persistence.
-	InPersist = true
-	// NotInPersist indicates that persistence is not ongoing.
-	NotInPersist = false
+	// InNormalState indicates that nothing is in ongoing.
+	InNormalState uint8 = 0
+	// InPersistState indicates that there is currently a coroutine performing persistence.
+	InPersistState uint8 = 1
+	// InMergeState indicates that is merging sdbs[1] to sdbs[0].
+	InMergeState uint8 = 2
 )
 
 type DB struct {
@@ -21,7 +25,7 @@ type DB struct {
 	sdbs [sdbNum]*sdb
 
 	// Protected by the server.CmdLock.
-	persisting bool
+	state uint8
 }
 
 const (
@@ -35,40 +39,65 @@ func New() *DB {
 }
 
 func (db *DB) LookupKeyRead(key string) (*obj.Robj, bool) {
-	sdb := db.sdbs[0]
-	return sdb.lookupKeyReadWithFlags(key)
+	_, val, ok := db.findForRead(key)
+	return val, ok
 }
 
-func (db *DB) LookupKeyWrite(key string) (val *obj.Robj, ok bool) {
+func (db *DB) findForRead(key string) (*sdb, *obj.Robj, bool) {
 	var sdb *sdb
-	if db.persisting {
+	if db.state != InNormalState {
+		sdb := db.sdbs[1]
+		if val, ok := sdb.lookupKeyReadWithFlags(key); ok {
+			return sdb, val, ok
+		}
+	}
+	sdb = db.sdbs[0]
+	val, ok := sdb.lookupKeyReadWithFlags(key)
+	return sdb, val, ok
+}
+
+func (db *DB) LookupKeyWrite(key string) (*obj.Robj, bool) {
+	_, val, ok := db.findForWrite(key)
+	return val, ok
+}
+
+func (db *DB) findForWrite(key string) (*sdb, *obj.Robj, bool) {
+	var sdb *sdb
+	if db.state != InNormalState {
 		sdb = db.sdbs[1]
-		val, ok = sdb.lookupKeyReadWithFlags(key)
-		if ok {
-			return
+		if val, ok := sdb.lookupKeyReadWithFlags(key); ok {
+			if db.state == InMergeState {
+				sdb.delKey(key)
+				sdb = db.sdbs[0]
+				sdb.setKey(key, val)
+
+				// Try moving part key-val pair in sdbs[1] to sdbs[0].
+				_ = db.MergeIfNeeded(20 * time.Millisecond)
+			}
+			return sdb, val, ok
 		}
 	}
 
 	sdb = db.sdbs[0]
-	val, ok = sdb.lookupKeyReadWithFlags(key)
+	val, ok := sdb.lookupKeyReadWithFlags(key)
 	// during the persistence process, the key-val to sdbs[1].
-	if ok && db.persisting {
+	if ok && db.state == InPersistState {
 		sdb = db.sdbs[1]
 		val = val.DeepCopy()
 		sdb.setKey(key, val)
 	}
-	return val, ok
+	return sdb, val, ok
 }
 
 func (db *DB) SetKey(key string, val *obj.Robj) {
-	robj, ok := db.LookupKeyWrite(key)
+	_, robj, ok := db.findForWrite(key)
 	if ok {
 		robj.SetVal(val.Val())
 		robj.SetType(val.Type())
 		robj.SetEncoding(val.Encoding())
 	} else {
 		sdb := db.sdbs[0]
-		if db.persisting {
+		if db.state == InPersistState {
 			sdb = db.sdbs[1]
 		}
 		sdb.setKey(key, val)
@@ -76,28 +105,24 @@ func (db *DB) SetKey(key string, val *obj.Robj) {
 }
 
 func (db *DB) SetExpire(key string, expire time.Duration) {
-	sdb := db.sdbs[0]
-	if db.persisting {
-		sdb = db.sdbs[1]
-	}
-	_, ok := sdb.lookupKey(key)
+	sdb, _, ok := db.findForRead(key)
 	if ok {
 		sdb.setExpire(key, expire)
 	}
 }
 
 func (db *DB) Expire(key string) time.Duration {
-	sdb := db.sdbs[0]
-	if db.persisting {
-		sdb = db.sdbs[1]
+	sdb, _, ok := db.findForRead(key)
+	if ok {
+		return sdb.expire(key)
 	}
-	return sdb.expire(key)
+	return -1
 }
 
 func (db *DB) DelKey(key string) {
-	robj, ok := db.LookupKeyWrite(key)
+	_, robj, ok := db.findForWrite(key)
 	if ok {
-		if db.persisting {
+		if db.state == InPersistState {
 			robj.SetDeleted(true)
 		} else {
 			sdb := db.sdbs[0]
@@ -140,11 +165,47 @@ func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 	return
 }
 
-func (db *DB) SetState(persisting bool) {
-	db.persisting = persisting
+func (db *DB) SetState(state uint8) {
+	db.state = state
 }
 
-func (db *DB) MergeIfNeeded() error {
+func (db *DB) inMergeState() bool {
+	return db.state == InMergeState
+}
+
+const dbMergeBatchNum = 128
+
+func (db *DB) MergeIfNeeded(timeout time.Duration) error {
+	if !db.inMergeState() {
+		return nil
+	}
+
+	start := time.Now()
+	cnt := 0
+	for {
+		if db.sdbs[1].slen == 0 {
+			db.SetState(InNormalState)
+			slog.Info("db merge has finished")
+			break
+		}
+		timeused := time.Since(start)
+		if time.Since(start) >= timeout {
+			slog.Info(fmt.Sprintf("in db merge stage, %d key-val pair "+
+				"had merged, timecost: %v\n", cnt, timeused))
+			break
+		}
+
+		num := 0
+		for e := range db.sdbs[1].Iterator() {
+			db.sdbs[0].setKey(e.Key, e.Val)
+			db.sdbs[1].delKey(e.Key)
+			num++
+			if num == dbMergeBatchNum {
+				break
+			}
+		}
+		cnt += num
+	}
 	return nil
 }
 

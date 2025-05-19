@@ -292,6 +292,13 @@ func (s *Server) cron() {
 
 		}
 	}
+
+	// After the db persistence is completed, move the key-val pair in sdbs[1] step by step to sdbs[0].
+	if util.TryLockWithTimeout(s.CmdLock, 20*time.Millisecond) {
+		_ = s.DB.MergeIfNeeded(100 * time.Millisecond)
+		s.CmdLock.Unlock()
+	}
+
 }
 
 func (s *Server) databasesCron() {
