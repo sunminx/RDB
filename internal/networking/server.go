@@ -64,6 +64,11 @@ type Server struct {
 	LoadingLoadedBytes  int64
 }
 
+const (
+	ChildInRunning    = true
+	ChildNotInRunning = false
+)
+
 type SaveParam struct {
 	Seconds int
 	Changes int

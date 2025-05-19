@@ -24,10 +24,11 @@ type Robj struct {
 	typ      RobjType
 	encoding EncodingType
 	val      any
+	deleted  bool
 }
 
 func New(val any, typ RobjType, encoding EncodingType) *Robj {
-	return &Robj{typ, encoding, val}
+	return &Robj{typ, encoding, val, false}
 }
 
 func (o *Robj) Val() any {
@@ -60,6 +61,21 @@ func (o *Robj) CheckType(typ RobjType) bool {
 
 func (o *Robj) CheckEncoding(encoding EncodingType) bool {
 	return o.encoding == encoding
+}
+
+func (o *Robj) Deleted() bool {
+	return o.deleted
+}
+
+func (o *Robj) SetDeleted(deleted bool) {
+	if deleted {
+		o.val = nil
+	}
+	o.deleted = deleted
+}
+
+func (o *Robj) DeepCopy() *Robj {
+	return o
 }
 
 type Iterator interface {

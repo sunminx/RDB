@@ -6,11 +6,22 @@ import (
 	obj "github.com/sunminx/RDB/internal/object"
 )
 
+const sdbNum = 2
+
+const (
+	// InPersist indicates that there is currently a coroutine performing persistence.
+	InPersist = true
+	// NotInPersist indicates that persistence is not ongoing.
+	NotInPersist = false
+)
+
 type DB struct {
 	// Usually, the last sdb is always empty and
 	// will only be written when writing key-val during the redo of aof or rdb.
-	sdbs   sdbs
-	sdblen int
+	sdbs [sdbNum]*sdb
+
+	// Protected by the server.CmdLock.
+	persisting bool
 }
 
 const (
@@ -20,55 +31,85 @@ const (
 )
 
 func New() *DB {
-	sdb := make([]*sdb, 2, 2)
-	var i int
-	for ; i < 2; i++ {
-		sdb[i] = newSdb(i)
-	}
-	return &DB{sdbs: sdb, sdblen: i}
-}
-
-func (db *DB) lookupSdb(key string) *sdb {
-	return db.sdbs[0]
+	return &DB{sdbs: [sdbNum]*sdb{newSdb(0), newSdb(1)}}
 }
 
 func (db *DB) LookupKeyRead(key string) (*obj.Robj, bool) {
-	sdb := db.lookupSdb(key)
+	sdb := db.sdbs[0]
 	return sdb.lookupKeyReadWithFlags(key)
 }
 
-func (db *DB) LookupKeyWrite(key string) (*obj.Robj, bool) {
-	// todo
-	sdb := db.lookupSdb(key)
-	return sdb.lookupKey(key)
+func (db *DB) LookupKeyWrite(key string) (val *obj.Robj, ok bool) {
+	var sdb *sdb
+	if db.persisting {
+		sdb = db.sdbs[1]
+		val, ok = sdb.lookupKeyReadWithFlags(key)
+		if ok {
+			return
+		}
+	}
+
+	sdb = db.sdbs[0]
+	val, ok = sdb.lookupKeyReadWithFlags(key)
+	// during the persistence process, the key-val to sdbs[1].
+	if ok && db.persisting {
+		sdb = db.sdbs[1]
+		val = val.DeepCopy()
+		sdb.setKey(key, val)
+	}
+	return val, ok
 }
 
 func (db *DB) SetKey(key string, val *obj.Robj) {
-	sdb := db.lookupSdb(key)
-	sdb.setKey(key, val)
-	return
+	robj, ok := db.LookupKeyWrite(key)
+	if ok {
+		robj.SetVal(val.Val())
+		robj.SetType(val.Type())
+		robj.SetEncoding(val.Encoding())
+	} else {
+		sdb := db.sdbs[0]
+		if db.persisting {
+			sdb = db.sdbs[1]
+		}
+		sdb.setKey(key, val)
+	}
 }
 
 func (db *DB) SetExpire(key string, expire time.Duration) {
-	sdb := db.lookupSdb(key)
-	sdb.setExpire(key, expire)
+	sdb := db.sdbs[0]
+	if db.persisting {
+		sdb = db.sdbs[1]
+	}
+	_, ok := sdb.lookupKey(key)
+	if ok {
+		sdb.setExpire(key, expire)
+	}
 }
 
 func (db *DB) Expire(key string) time.Duration {
-	sdb := db.lookupSdb(key)
+	sdb := db.sdbs[0]
+	if db.persisting {
+		sdb = db.sdbs[1]
+	}
 	return sdb.expire(key)
 }
 
 func (db *DB) DelKey(key string) {
-	sdb := db.lookupSdb(key)
-	sdb.delKey(key)
-	return
+	robj, ok := db.LookupKeyWrite(key)
+	if ok {
+		if db.persisting {
+			robj.SetDeleted(true)
+		} else {
+			sdb := db.sdbs[0]
+			sdb.delKey(key)
+		}
+	}
 }
 
 func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 	start := time.Now()
 	exit := false
-	for i := 0; i < db.sdblen; i++ {
+	for i := 0; i < sdbNum; i++ {
 		sdb := db.sdbs[i]
 		for iteration := 0; !exit; iteration++ {
 			expired := 0
@@ -99,7 +140,11 @@ func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 	return
 }
 
-func (db *DB) tryMergeSdb() error {
+func (db *DB) SetState(persisting bool) {
+	db.persisting = persisting
+}
+
+func (db *DB) MergeIfNeeded() error {
 	return nil
 }
 

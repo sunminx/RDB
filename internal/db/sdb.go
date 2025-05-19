@@ -7,20 +7,6 @@ import (
 	"github.com/sunminx/RDB/internal/sds"
 )
 
-type sdbs []*sdb
-
-func (s sdbs) Len() int {
-	return len(s)
-}
-
-func (s sdbs) Less(i, j int) bool {
-	return s[i].slen < s[j].slen
-}
-
-func (s sdbs) Swap(i, j int) {
-	s[i], s[j] = s[j], s[i]
-}
-
 type sdb struct {
 	id      int
 	dict    dictable
@@ -98,6 +84,7 @@ func (sdb *sdb) expire(key string) time.Duration {
 
 func (sdb *sdb) delKey(key string) {
 	sdb.dict.Del(key)
+	sdb.expires.Del(key)
 }
 
 const (
