@@ -8,6 +8,14 @@ import (
 )
 
 func HSetCommand(cli client) bool {
+	return genericHSetCommand(cli)
+}
+
+func HMSetCommand(cli client) bool {
+	return genericHSetCommand(cli)
+}
+
+func genericHSetCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.LookupKeyRead(key)
 	if exists {
@@ -19,7 +27,10 @@ func HSetCommand(cli client) bool {
 		val = hash.NewRobj(hash.NewZipmap())
 	}
 
-	hash.Set(val, argv[2], argv[3])
+	for i := 2; i < len(argv); i += 2 {
+		hash.Set(val, argv[i], argv[i+1])
+	}
+
 	cli.SetKey(key, val)
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
