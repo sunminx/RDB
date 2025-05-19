@@ -2,6 +2,8 @@ package util
 
 import (
 	"math"
+	"sync"
+	"time"
 )
 
 func Cond[T byte | int16 | int32 | int | int64 | string](expr bool, t, f T) T {
@@ -116,4 +118,22 @@ func cond(c bool) int64 {
 		return 1
 	}
 	return 0
+}
+
+func TryLockWithTimeout(lock *sync.RWMutex, timeout time.Duration) bool {
+	t := time.NewTimer(timeout)
+	defer t.Stop()
+
+	for {
+		if lock.TryLock() {
+			return true
+		}
+
+		select {
+		case <-t.C:
+			return false
+		default:
+			time.Sleep(10 * time.Millisecond)
+		}
+	}
 }

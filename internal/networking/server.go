@@ -266,17 +266,22 @@ func (s *Server) cron() {
 			if s.Dirty >= sp.Changes &&
 				int(s.UnixTime-s.LastSave) > 1000*sp.Seconds {
 
-				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...",
+				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...\n",
 					sp.Changes, sp.Seconds))
 				_ = s.Dumper.RdbSaveBackground(s)
 				break
 			}
 		}
 
-		if s.AofState == 1 && s.AofRewritePerc > 0 && s.AofCurrSize > s.AofRewriteMinSize {
+		if !s.isBgsaveOrAofRewriteRunning() &&
+			s.AofState == 1 &&
+			s.AofRewritePerc > 0 && s.AofCurrSize > s.AofRewriteMinSize {
+			// Calculate whether the growth rate of the current AOF file size
+			// after the last rewrite exceeds the threshold.
 			base := util.Cond(s.AofRewriteBaseSize > 0, s.AofRewriteBaseSize, 1)
 			growth := (s.AofCurrSize*100)/base - 100
 			if growth >= s.AofRewritePerc {
+				slog.Info(fmt.Sprintf("starting automatic rewriting of AOF on %d%% growth\n", growth))
 				_ = s.Dumper.AofRewriteBackground(s)
 			}
 

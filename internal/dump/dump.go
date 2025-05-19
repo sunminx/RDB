@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/sunminx/RDB/internal/networking"
+	"github.com/sunminx/RDB/pkg/util"
 )
 
 const (
@@ -33,6 +34,11 @@ func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 	if !server.RdbChildRunning.CompareAndSwap(false, true) {
 		return nosave
 	}
+	locked := util.TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
+	if !locked {
+		slog.Warn("exit bgsave RDB file because of db can't locked")
+		return nosave
+	}
 	now := time.Now()
 	go rdbSave(server)
 	slog.Info("background saving started")
@@ -46,6 +52,7 @@ type rdberInfo struct {
 }
 
 func rdbSave(server *networking.Server) bool {
+	defer server.CmdLock.Unlock()
 	filename := server.RdbFilename
 	tempfile := fmt.Sprintf("temp-%d.rdb", os.Getgid())
 	file, err := os.Create(tempfile)
@@ -237,6 +244,11 @@ func (d Dumper) AofRewriteBackground(server *networking.Server) bool {
 	if !server.AofChildRunning.CompareAndSwap(false, true) {
 		return nosave
 	}
+	locked := util.TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
+	if !locked {
+		slog.Warn("exit rewrite AOF file because of db can't locked")
+		return false
+	}
 	now := time.Now()
 	go aofRewrite(server)
 	slog.Info("background saving started")
@@ -245,6 +257,7 @@ func (d Dumper) AofRewriteBackground(server *networking.Server) bool {
 }
 
 func aofRewrite(server *networking.Server) bool {
+	defer server.CmdLock.Unlock()
 	tempFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
 	file, err := os.Create(tempFilename)
 	if err != nil {
