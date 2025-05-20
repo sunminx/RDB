@@ -11,10 +11,9 @@ class TestList(unittest.TestCase):
         items = ["a", "b", "c", "d"]
         size = 10000
         for item in items:
-            self.cli.rpush(key, item * size)
+            self.cli.lpush(key, item * size)
         for item in reversed(items):
-            ele = self.cli.rpop(key)
-            self.assertEqual(self.cli.rpop(key), item * size)
+            self.assertEqual(self.cli.lpop(key), item * size)
 
     def tearDown(self):
         if self.cli is not None:

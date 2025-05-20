@@ -227,15 +227,17 @@ func (n *QuicklistNode) mergeNeeded(neighborNode *QuicklistNode) bool {
 	}
 }
 
-// var optimizationLevel = []int32{4096, 8192, 16384, 32768, 65536}
-var optimizationLevel = []int32{16, 64, 128, 512, 1024}
+var optimizationLevel = []int32{4096, 8192, 16384, 32768, 65536}
+
+// var optimizationLevel = []int32{16, 64, 128, 512, 1024}
 
 func quicklistNodeMeetsOptimizationLevel(ln int32, fill int16) bool {
 	return ln < optimizationLevel[fill]
 }
 
-// const safetyLimit int32 = 8192
-const safetyLimit int32 = 64
+const safetyLimit int32 = 8192
+
+// const safetyLimit int32 = 64
 
 func quicklistNodeMeetsSafetyLimit(ln int32) bool {
 	return ln < safetyLimit
@@ -260,37 +262,36 @@ func (n *QuicklistNode) endOffset() int32 {
 	return n.zl.Zlbytes()
 }
 
-func (ql *Quicklist) PopLeft() {
-	ql.remove(quicklistHead, 1, 0)
-	return
+func (ql *Quicklist) PopLeft() [][]byte {
+	return ql.remove(quicklistHead, 1, 0)
 }
 
-func (ql *Quicklist) Pop() {
-	ql.remove(quicklistTail, 1, 0)
-	return
+func (ql *Quicklist) Pop() [][]byte {
+	return ql.remove(quicklistTail, 1, 0)
 }
 
-func (ql *Quicklist) remove(where int8, num, skipnum int64) int64 {
+func (ql *Quicklist) remove(where int8, num, skipnum int64) [][]byte {
 	if ql.cnt == 0 {
-		return 0
+		return nil
 	}
-
 	var node, neighborNode *QuicklistNode
-	var removenum, skipenum, removednum, skipednum int16
+	var removenum, skipenum, skipednum int16
 	var pass bool
 	if where == quicklistHead {
 		node = ql.head
 	} else if where == quicklistTail {
 		node = ql.tail
 	}
+	removeSlice := make([][]byte, 0)
 	for num > 0 {
+		var removes [][]byte
 		removenum = int16(util.Cond(num > math.MaxInt16, math.MaxInt16, num))
 		skipenum = int16(util.Cond(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
 		if where == quicklistHead {
 			neighborNode = node.next
-			removednum, skipednum, pass = node.zl.RemoveHead(removenum, skipenum)
+			removes, skipednum, pass = node.zl.RemoveHead(removenum, skipenum)
 			if pass {
-				if ql.head.zl.Zllen() == 0 {
+				if skipednum == 0 {
 					ql.ln--
 					ql.head = neighborNode
 					node = ql.head
@@ -300,9 +301,9 @@ func (ql *Quicklist) remove(where int8, num, skipnum int64) int64 {
 			}
 		} else if where == quicklistTail {
 			neighborNode = node.prev
-			removednum, skipednum, pass = node.zl.RemoveTail(removenum, skipenum)
+			removes, skipednum, pass = node.zl.RemoveTail(removenum, skipenum)
 			if pass {
-				if ql.tail.zl.Zllen() == 0 {
+				if skipednum == 0 {
 					ql.ln--
 					ql.tail = neighborNode
 				} else {
@@ -310,9 +311,14 @@ func (ql *Quicklist) remove(where int8, num, skipnum int64) int64 {
 				}
 			}
 		}
-		num -= int64(removednum)
+		var removedNum int64 = 0
+		if removes != nil {
+			removedNum = int64(len(removes))
+			removeSlice = append(removeSlice, removes...)
+		}
+		num -= removedNum
 		skipnum -= int64(skipednum)
-		ql.cnt -= int64(removednum)
+		ql.cnt -= removedNum
 		if neighborNode == nil {
 			break
 		}
@@ -331,7 +337,7 @@ func (ql *Quicklist) remove(where int8, num, skipnum int64) int64 {
 			ql.tail.insertEncoded(offset, encoded, ln, headprevlen, taillen)
 		}
 	}
-	return 0
+	return removeSlice
 }
 
 func (ql *Quicklist) unlinkHeadNode() *QuicklistNode {

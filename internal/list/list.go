@@ -49,18 +49,18 @@ func Set(robj *obj.Robj, idx int64, entry []byte) {
 	return
 }
 
-func Pop(robj *obj.Robj) {
+func Pop(robj *obj.Robj) [][]byte {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
-		unwrap(robj).Pop()
+		return unwrap(robj).Pop()
 	}
-	return
+	return nil
 }
 
-func PopLeft(robj *obj.Robj) {
+func PopLeft(robj *obj.Robj) [][]byte {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
-		unwrap(robj).PopLeft()
+		return unwrap(robj).PopLeft()
 	}
-	return
+	return nil
 }
 
 func Index(robj *obj.Robj, idx int64) ([]byte, bool) {

@@ -69,14 +69,17 @@ func popGenericCommand(cli client, where int8) bool {
 		return ERR
 	}
 
+	var entries [][]byte
 	if where == listHead {
-		list.PopLeft(val)
-		cli.AddReplyInt64(1)
+		entries = list.PopLeft(val)
 	} else if where == listTail {
-		list.Pop(val)
-		cli.AddReplyInt64(1)
+		entries = list.Pop(val)
+	}
+	if entries != nil && len(entries) > 0 {
+		robj := sds.NewRobj(entries[0])
+		cli.AddReplyBulk(robj)
 	} else {
-		cli.AddReplyInt64(0)
+		cli.AddReplyRaw(common.Shared["bullbulk"])
 	}
 	return OK
 }

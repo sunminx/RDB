@@ -30,6 +30,7 @@ func NewZiplist() *Ziplist {
 	bytes := int32(ZiplistHeaderSize + ZiplistEndSize)
 
 	zl := Ziplist(make([]byte, bytes, bytes))
+	zl.SetZllen(0)
 	zl.SetZlbytes(bytes)
 	zl.SetZltail(ZiplistHeaderSize)
 	zl[bytes-1] = ZiplistEnd
@@ -466,36 +467,50 @@ const (
 	ZiplistTail = 1
 )
 
-func (zl *Ziplist) PopLeft() {
-	zl.RemoveHead(1, 0)
-	return
+func (zl *Ziplist) PopLeft() []byte {
+	removes, _, _ := zl.RemoveHead(1, 0)
+	if removes != nil && len(removes) > 0 {
+		return removes[0]
+	}
+	return nil
 }
 
-func (zl *Ziplist) Pop() {
-	zl.RemoveTail(1, 0)
-	return
+func (zl *Ziplist) Pop() []byte {
+	removes, _, _ := zl.RemoveTail(1, 0)
+	if removes != nil && len(removes) > 0 {
+		return removes[0]
+	}
+	return nil
 }
 
-func (zl *Ziplist) RemoveHead(num, skipnum int16) (int16, int16, bool) {
-	var removednum int16
-	var pass bool
+func (zl *Ziplist) RemoveHead(num, skipnum int16) ([][]byte, int16, bool) {
+	// If there are no entry that need to be skipped, trying to delete zl directly.
 	if skipnum == 0 {
-		removednum, pass = zl.removeAll(num)
+		removes, pass := zl.removeAll(num)
 		if pass {
-			return removednum, 0, pass
+			return removes, 0, pass
 		}
 	}
+	// If the skipnum exceeds the zllen, it indicates that no entry in zl can be deleted.
 	if skipnum >= zl.Zllen() {
-		return 0, zl.Zllen(), true
+		return nil, zl.Zllen(), true
 	}
 
-	var start, offset int32
-	offset = zl.offsetHeadSkipN(skipnum)
-	start = offset
+	var (
+		removedNum = int16(0)
+		pass       = false
+		removes    = make([][]byte, 0)
+		offset     = zl.offsetHeadSkipN(skipnum)
+		start      = offset
+	)
 	for num > 0 {
-		offset += zl.entryLen(offset)
+		entry, entrySize := zl.DecodeEntry(offset)
+		nentry := make([]byte, len(entry))
+		copy(nentry, entry)
+		removes = append(removes, nentry)
+		offset += entrySize
 		num--
-		removednum++
+		removedNum++
 		if zl.atEnd(offset) {
 			pass = true
 			break
@@ -518,8 +533,8 @@ func (zl *Ziplist) RemoveHead(num, skipnum int16) (int16, int16, bool) {
 	zl.shrink(start, offset)
 	zl.AddZlbytes(-(offset - start))
 	zl.AddZltail(-(offset - start))
-	zl.AddZllen(-removednum)
-	return removednum, skipnum, pass
+	zl.AddZllen(-removedNum)
+	return removes, skipnum, pass
 }
 
 func (zl *Ziplist) offsetHeadSkipN(n int16) int32 {
@@ -530,32 +545,39 @@ func (zl *Ziplist) offsetHeadSkipN(n int16) int32 {
 	return offset
 }
 
-func (zl *Ziplist) RemoveTail(num, skipnum int16) (int16, int16, bool) {
-	var removednum int16
-	var pass bool
+func (zl *Ziplist) RemoveTail(num, skipnum int16) ([][]byte, int16, bool) {
+	// If there are no entry that need to be skipped, trying to delete zl directly.
 	if skipnum == 0 {
-		removednum, pass = zl.removeAll(num)
+		removes, pass := zl.removeAll(num)
 		if pass {
-			return removednum, 0, pass
+			return removes, 0, pass
 		}
 	}
+	// If the skipnum exceeds the zllen, it indicates that no entry in zl can be deleted.
 	if skipnum >= zl.Zllen() {
-		return 0, zl.Zllen(), true
+		return nil, zl.Zllen(), true
 	}
 
-	var start, offset int32
-	offset = zl.offsetTailSkipN(skipnum)
-	start = offset
-	removednum = 1
-	for num > 1 {
+	var (
+		removedNum = int16(0)
+		pass       = false
+		removes    = make([][]byte, 0)
+		offset     = zl.offsetTailSkipN(skipnum)
+		start      = offset
+	)
+	for num > 0 {
+		entry, _ := zl.DecodeEntry(offset)
+		nentry := make([]byte, len(entry))
+		copy(nentry, entry)
+		removes = append(removes, nentry)
+		num--
+		removedNum++
 		prevlen := zl.PrevLen(offset)
 		if prevlen == 0 {
 			pass = true
 			break
 		}
 		offset -= prevlen
-		num--
-		removednum++
 	}
 
 	pprevlen := zl.PrevLen(start)
@@ -563,8 +585,8 @@ func (zl *Ziplist) RemoveTail(num, skipnum int16) (int16, int16, bool) {
 	zl.shrink(offset, start)
 	zl.AddZlbytes(-(start - offset))
 	zl.AddZltail(-pprevlen)
-	zl.AddZllen(-removednum)
-	return removednum, skipnum, pass
+	zl.AddZllen(-removedNum)
+	return removes, skipnum, pass
 }
 
 func (zl *Ziplist) offsetTailSkipN(n int16) int32 {
@@ -575,13 +597,25 @@ func (zl *Ziplist) offsetTailSkipN(n int16) int32 {
 	return offset
 }
 
-func (zl *Ziplist) removeAll(num int16) (int16, bool) {
+func (zl *Ziplist) removeAll(num int16) ([][]byte, bool) {
 	num = util.Cond(num > zl.Zllen(), zl.Zllen(), num)
 	if num == zl.Zllen() {
-		zl = NewZiplist()
-		return num, true
+		entries := zl.getAllEntries()
+		return entries, true
 	}
-	return 0, false
+	return nil, false
+}
+
+func (zl *Ziplist) getAllEntries() [][]byte {
+	entries := make([][]byte, 0, zl.Zllen())
+	iter := NewZiplistIterator(zl)
+	for iter.HasNext() {
+		entry := iter.Next()
+		nentry := make([]byte, len(entry))
+		copy(nentry, entry)
+		entries = append(entries, nentry)
+	}
+	return entries
 }
 
 func (zl *Ziplist) atEnd(offset int32) bool {
