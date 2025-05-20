@@ -74,10 +74,6 @@ func (o *Robj) SetDeleted(deleted bool) {
 	o.deleted = deleted
 }
 
-func (o *Robj) DeepCopy() *Robj {
-	return o
-}
-
 type Iterator interface {
 	HasNext() bool
 	Next() any

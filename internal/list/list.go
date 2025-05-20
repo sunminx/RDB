@@ -20,6 +20,14 @@ func NewRobj(val any) *obj.Robj {
 	return obj.New(val, obj.TypeList, obj.EncodingQuicklist)
 }
 
+func DeepCopy(robj *obj.Robj) *obj.Robj {
+	if robj.CheckEncoding(obj.EncodingQuicklist) {
+		nql := unwrap(robj).deepcopy()
+		return NewRobj(nql)
+	}
+	return nil
+}
+
 func Push(robj *obj.Robj, entry []byte) {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).Push(entry)

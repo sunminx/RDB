@@ -16,6 +16,14 @@ func NewRobj(val any) *obj.Robj {
 	return obj.New(val, obj.TypeHash, obj.EncodingZipmap)
 }
 
+func DeepCopy(robj *obj.Robj) *obj.Robj {
+	if robj.CheckEncoding(obj.EncodingZipmap) {
+		nzm := unwrap(robj).deepcopy()
+		return NewRobj(nzm)
+	}
+	return nil
+}
+
 func Set(robj *obj.Robj, field, val []byte) {
 	if robj.CheckEncoding(obj.EncodingZipmap) {
 		unwrap(robj).set(field, val)

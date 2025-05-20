@@ -36,6 +36,14 @@ func NewZiplist() *Ziplist {
 	return &zl
 }
 
+func (zl *Ziplist) DeepCopy() *Ziplist {
+	ln := zl.Zlbytes()
+	b := make([]byte, 0, ln)
+	copy(b, []byte(*zl))
+	nzl := Ziplist(b)
+	return &nzl
+}
+
 func (zl *Ziplist) SetZlbytes(bytes int32) {
 	binary.LittleEndian.PutUint32([]byte(*zl)[:4], uint32(bytes))
 }

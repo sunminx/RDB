@@ -16,6 +16,12 @@ func NewEmpty() SDS {
 	return New(bytes)
 }
 
+func (s *SDS) deepcopy() SDS {
+	b := make([]byte, 0, s.Len())
+	copy(b, []byte(*s))
+	return New(b)
+}
+
 func (s *SDS) Len() int {
 	return len(([]byte)(*s))
 }

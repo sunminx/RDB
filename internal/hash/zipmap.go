@@ -14,6 +14,12 @@ func NewZipmap() *Zipmap {
 	return &Zipmap{ds.NewZiplist()}
 }
 
+func (zp *Zipmap) deepcopy() *Zipmap {
+	zl := zp.Ziplist
+	nzl := zl.DeepCopy()
+	return &Zipmap{nzl}
+}
+
 func (zp *Zipmap) set(field, val []byte) {
 	var update bool
 	if zp.Zllen() > 0 {

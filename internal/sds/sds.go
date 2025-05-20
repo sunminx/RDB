@@ -30,6 +30,14 @@ func NewRobj(val any) *obj.Robj {
 	return &robj
 }
 
+func DeepCopy(robj *obj.Robj) *obj.Robj {
+	if robj.CheckEncoding(obj.EncodingRaw) {
+		ns := unwrap(robj).deepcopy()
+		return NewRobj(ns)
+	}
+	return nil
+}
+
 func Append(robj *obj.Robj, s []byte) {
 	if robj.CheckEncoding(obj.EncodingRaw) {
 		unwrap(robj).Cat(s)

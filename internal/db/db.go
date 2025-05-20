@@ -5,7 +5,10 @@ import (
 	"log/slog"
 	"time"
 
+	"github.com/sunminx/RDB/internal/hash"
+	"github.com/sunminx/RDB/internal/list"
 	obj "github.com/sunminx/RDB/internal/object"
+	"github.com/sunminx/RDB/internal/sds"
 )
 
 const sdbNum = 2
@@ -83,10 +86,23 @@ func (db *DB) findForWrite(key string) (*sdb, *obj.Robj, bool) {
 	// during the persistence process, the key-val to sdbs[1].
 	if ok && db.state == InPersistState {
 		sdb = db.sdbs[1]
-		val = val.DeepCopy()
+		val = deepcopy(val)
 		sdb.setKey(key, val)
 	}
 	return sdb, val, ok
+}
+
+func deepcopy(val *obj.Robj) *obj.Robj {
+	switch val.Type() {
+	case obj.TypeString:
+		return sds.DeepCopy(val)
+	case obj.TypeList:
+		return list.DeepCopy(val)
+	case obj.TypeHash:
+		return hash.DeepCopy(val)
+	default:
+		return nil
+	}
 }
 
 func (db *DB) SetKey(key string, val *obj.Robj) {
