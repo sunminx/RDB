@@ -9,7 +9,7 @@ build:
 	go build -tags debug
 
 test:
-	python3 -m unittest tests/*_test.py
+	python3 tests/run_tests.py
 
 clean:
 	rm -rf RDB
