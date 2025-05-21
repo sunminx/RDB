@@ -33,3 +33,9 @@ func ExecCommand(cli client) bool {
 	cli.MultiExec()
 	return OK
 }
+
+func FlushAllCommand(cli client) bool {
+	_ = cli.Empty()
+	cli.AddReplyStatus(common.Shared["ok"])
+	return OK
+}

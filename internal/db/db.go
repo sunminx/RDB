@@ -229,3 +229,11 @@ func (db *DB) Iterator() <-chan DBEntry {
 	// The data is always in Database 0.
 	return db.sdbs[0].Iterator()
 }
+
+func (db *DB) Empty() int {
+	if db.state != InNormalState {
+		slog.Warn("db is not in normal state while empty db is not allowed")
+		return 0
+	}
+	return db.sdbs[0].dict.Empty()
+}

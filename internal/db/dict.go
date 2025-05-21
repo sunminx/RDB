@@ -104,3 +104,9 @@ func (d *MapDict) Iterator() <-chan *Entry {
 	}()
 	return ch
 }
+
+func (d *MapDict) Empty() int {
+	ln := len(d.dict)
+	d.dict = make(map[string]*obj.Robj)
+	return ln
+}

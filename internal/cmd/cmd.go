@@ -22,6 +22,7 @@ type client interface {
 	SetKey(string, *obj.Robj)
 	SetExpire(string, time.Duration)
 	DelKey(string)
+	Empty() int
 	AddReply(*obj.Robj)
 	AddReplyRaw([]byte)
 	AddReplyStatus([]byte)
@@ -75,4 +76,6 @@ var CommandTable []Command = []Command{
 	{"hexists", HExistsCommand, 3, "rF", 0, 1, 1, 1, 0, 0},
 	{"multi", MultiCommand, 1, "sF", 0, 0, 0, 0, 0, 0},
 	{"exec", ExecCommand, 1, "sM", 0, 0, 0, 0, 0, 0},
+	{"flushdb", FlushAllCommand, -1, "w", 0, 0, 0, 0, 0, 0},
+	{"flushall", FlushAllCommand, -1, "w", 0, 0, 0, 0, 0, 0},
 }

@@ -23,6 +23,7 @@ type dictable interface {
 	Used() int
 	Size() int
 	Iterator() <-chan *Entry
+	Empty() int
 }
 
 func newSdb(id int) *sdb {
