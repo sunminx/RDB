@@ -55,6 +55,7 @@ func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 	now := time.Now()
 	go rdbSave(server)
 	slog.Info("background saving started")
+	server.DirtyBeforeBgsave = server.Dirty
 	server.RdbSaveTimeStart = now.UnixMilli()
 	server.RdbChildType = rdbChildTypeDisk
 	return saved
@@ -95,7 +96,7 @@ func rdbSave(server *networking.Server) bool {
 	}
 
 	if err = os.Rename(tempfile, filename); err != nil {
-		slog.Warn("error moving temp DB file on the final",
+		slog.Warn("error renmae the temp DB file",
 			"tempfile", tempfile, "filename", filename, "err", err)
 		os.Remove(tempfile)
 		return nosave
@@ -126,6 +127,8 @@ func (d Dumper) RdbSaveBackgroundDoneHandler(server *networking.Server) {
 	}
 	d.waitResetDBState = notWait
 	server.DB.SetState(db.InMergeState)
+	server.LastSave = time.Now().UnixMilli()
+	server.Dirty -= server.DirtyBeforeBgsave
 	server.RdbChildRunning.Store(networking.ChildNotInRunning)
 	server.CmdLock.Unlock()
 }

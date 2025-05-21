@@ -185,23 +185,22 @@ func (db *DB) SetState(state uint8) {
 	db.state = state
 }
 
-func (db *DB) inMergeState() bool {
-	return db.state == InMergeState
+func (db *DB) InNormalState() bool {
+	return db.state == InNormalState
 }
 
 const dbMergeBatchNum = 128
 
 func (db *DB) MergeIfNeeded(timeout time.Duration) error {
-	if !db.inMergeState() {
+	if db.state != InMergeState {
 		return nil
 	}
-
 	start := time.Now()
 	cnt := 0
 	for {
 		if db.sdbs[1].slen == 0 {
-			db.SetState(InNormalState)
-			slog.Info("db merge has finished")
+			db.state = InNormalState
+			slog.Info("the merge of DB has finished")
 			break
 		}
 		timeused := time.Since(start)

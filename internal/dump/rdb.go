@@ -17,6 +17,7 @@ import (
 	"github.com/sunminx/RDB/internal/list"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/rio"
+	"github.com/sunminx/RDB/internal/sds"
 	"github.com/sunminx/RDB/pkg/util"
 )
 
@@ -349,7 +350,7 @@ func (rdb *Rdber) saveStringObject(val *obj.Robj) bool {
 		}
 		return rdb.writeRaw(enc)
 	} else if val.CheckEncoding(obj.EncodingRaw) {
-		rdb.saveRawString(val.Val().(string))
+		rdb.saveRawString(string(val.Val().(sds.SDS)))
 		return saved
 	}
 	return nosave

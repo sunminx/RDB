@@ -23,6 +23,7 @@ type client interface {
 	SetExpire(string, time.Duration)
 	DelKey(string)
 	Empty() int
+	AddDirty(int)
 	AddReply(*obj.Robj)
 	AddReplyRaw([]byte)
 	AddReplyStatus([]byte)

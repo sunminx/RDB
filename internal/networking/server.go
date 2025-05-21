@@ -50,6 +50,7 @@ type Server struct {
 	UnixTime            int64
 	LastSave            int64
 	Dirty               int
+	DirtyBeforeBgsave   int
 	AofChildRunning     atomic.Bool
 	AofFilename         string
 	AofDirname          string
@@ -175,6 +176,7 @@ func (s *Server) readQuery(cli *Client) bool {
 const defMaxFd = 1024
 
 func NewServer() *Server {
+	now := time.Now()
 	return &Server{
 		MaxIdleTime:   0,
 		TcpKeepalive:  300,
@@ -192,6 +194,8 @@ func NewServer() *Server {
 		LogPath:       "/dev/null",
 		Version:       "0.0.1",
 		RdbVersion:    9,
+		LastSave:      now.UnixMilli(),
+		RdbFilename:   "dump.rdb",
 	}
 }
 
@@ -269,7 +273,8 @@ func (s *Server) cron() {
 		// we have to save/rewrite now.
 		for _, sp := range s.SaveParams {
 			if s.Dirty >= sp.Changes &&
-				int(s.UnixTime-s.LastSave) > 1000*sp.Seconds {
+				int(s.UnixTime-s.LastSave) > 1000*sp.Seconds &&
+				s.DB.InNormalState() {
 
 				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...\n",
 					sp.Changes, sp.Seconds))
@@ -278,7 +283,7 @@ func (s *Server) cron() {
 			}
 		}
 
-		if !s.isBgsaveOrAofRewriteRunning() &&
+		if !s.isBgsaveOrAofRewriteRunning() && s.DB.InNormalState() &&
 			s.AofState == 1 &&
 			s.AofRewritePerc > 0 && s.AofCurrSize > s.AofRewriteMinSize {
 			// Calculate whether the growth rate of the current AOF file size

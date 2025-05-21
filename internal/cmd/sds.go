@@ -61,7 +61,6 @@ func AppendCommand(cli client) bool {
 
 func setGenericCommand(cli client, key string, val, expire []byte) bool {
 	var milliseconds int64
-
 	if expire != nil {
 		var err error
 		milliseconds, err = strconv.ParseInt(string(expire), 10, 64)
@@ -77,6 +76,7 @@ func setGenericCommand(cli client, key string, val, expire []byte) bool {
 		now := time.Now().UnixMilli()
 		cli.SetExpire(key, time.Duration(now+milliseconds))
 	}
+	cli.AddDirty(1)
 	return OK
 }
 
@@ -103,6 +103,7 @@ func DelCommand(cli client) bool {
 		numdel += 1
 	}
 	cli.AddReplyInt64(numdel)
+	cli.AddDirty(1)
 	return OK
 }
 
@@ -134,5 +135,6 @@ func incrdecrCommand(cli client, key string, n int64) bool {
 		return ERR
 	}
 	cli.AddReplyInt64(sds.Incr(val, n))
+	cli.AddDirty(1)
 	return OK
 }

@@ -34,19 +34,20 @@ func pushGenericCommand(cli client, where int8) bool {
 		val = list.NewRobj(list.NewQuicklist())
 	}
 
-	var pushednum int64
+	pushedNum := 0
 	for i := 2; i < len(argv); i++ {
 		if where == listHead {
 			list.PushLeft(val, argv[i])
 		} else if where == listTail {
 			list.Push(val, argv[i])
 		}
-		pushednum++
+		pushedNum++
 	}
 	if !exists {
 		cli.SetKey(key, val)
 	}
-	cli.AddReplyInt64(pushednum)
+	cli.AddReplyInt64(int64(pushedNum))
+	cli.AddDirty(pushedNum)
 	return OK
 }
 
@@ -81,6 +82,7 @@ func popGenericCommand(cli client, where int8) bool {
 	} else {
 		cli.AddReplyRaw(common.Shared["bullbulk"])
 	}
+	cli.AddDirty(1)
 	return OK
 }
 

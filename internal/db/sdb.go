@@ -129,7 +129,7 @@ func (sdb *sdb) Iterator() <-chan DBEntry {
 		for entry := range sdb.dict.Iterator() {
 			dbEntry := DBEntry{entry, -1}
 			v, ok := sdb.expires.FetchValue(entry.Key)
-			if !ok {
+			if ok {
 				dbEntry.Expire = v.Val().(int64)
 			}
 			ch <- dbEntry

@@ -1,4 +1,5 @@
 *.swp
+*.rdb
 .vscode/
 RDB
 tests/__pycache__/

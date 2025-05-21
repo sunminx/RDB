@@ -434,6 +434,10 @@ func (c *Client) Wake() {
 	c.Conn.Wake(nil)
 }
 
+func (c *Client) AddDirty(n int) {
+	c.Server.Dirty += n
+}
+
 // AddReply output the complete value to client.
 func (c *Client) AddReply(robj *obj.Robj) {
 	switch robj.Type() {

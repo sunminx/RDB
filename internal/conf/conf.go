@@ -71,6 +71,8 @@ func Load(server *networking.Server, filename string) {
 				server.LogLevel = argv[1]
 			case argv[0] == "logfile" && len(argv) == 2:
 				server.LogPath = argv[1]
+			case argv[0] == "dbfilename" && len(argv) == 2:
+				server.RdbFilename = argv[1]
 			case argv[0] == "save":
 				if len(argv) == 3 {
 					seconds, err := strconv.Atoi(argv[1])

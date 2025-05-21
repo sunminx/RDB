@@ -27,12 +27,15 @@ func genericHSetCommand(cli client) bool {
 		val = hash.NewRobj(hash.NewZipmap())
 	}
 
+	setedNum := 0
 	for i := 2; i < len(argv); i += 2 {
 		hash.Set(val, argv[i], argv[i+1])
+		setedNum++
 	}
 
 	cli.SetKey(key, val)
 	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddDirty(setedNum)
 	return OK
 }
 
@@ -69,12 +72,13 @@ func HDelCommand(cli client) bool {
 		return ERR
 	}
 
-	var delednum int64
+	deletedNum := 0
 	for i := 2; i < len(argv); i++ {
 		hash.Del(val, argv[i])
-		delednum++
+		deletedNum++
 	}
-	cli.AddReplyInt64(delednum)
+	cli.AddReplyInt64(int64(deletedNum))
+	cli.AddDirty(deletedNum)
 	return OK
 }
 
