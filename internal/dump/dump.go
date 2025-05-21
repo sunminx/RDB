@@ -53,7 +53,7 @@ func (d Dumper) RdbLoad(server *networking.Server) bool {
 		slog.Warn("can't create rdber for load", "err", err)
 		return false
 	}
-	if err := rdber.Load(); err != nil {
+	if err := rdber.load(); err != nil {
 		slog.Warn("failed load RDB file", "err", err)
 		return false
 	}

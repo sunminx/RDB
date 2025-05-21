@@ -310,7 +310,7 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			return aofFailed
 		}
 		// Laoding RDB part firstly.
-		if err = rdber.Load(); err != nil {
+		if err = rdber.load(); err != nil {
 			if server.AofFilename == filename {
 				slog.Info("failed reading RDB preamble from AOF file...", "err", err)
 			} else {

@@ -95,6 +95,10 @@ func (rdb *Rdber) saveSelectDBNum(num uint64) bool {
 	return rdb.saveLen(num)
 }
 
+func (rdb *Rdber) loadSelectDBNum() uint64 {
+	return rdb.loadLen(nil)
+}
+
 func (rdb *Rdber) saveAuxFields() bool {
 	var saved bool = true
 	saved = saved && rdb.saveAuxFieldStrStr("redis-ver", "9")
@@ -102,6 +106,12 @@ func (rdb *Rdber) saveAuxFields() bool {
 	saved = saved && rdb.saveAuxFieldStrInt("ctime", time.Now().Unix())
 	saved = saved && rdb.saveAuxFieldStrInt("used-mem", 0)
 	return saved
+}
+
+func (rdb *Rdber) loadAuxField() (string, any) {
+	key := rdb.genericLoadStringObject()
+	val := rdb.genericLoadStringObject()
+	return string(key.([]byte)), val
 }
 
 func (rdb *Rdber) saveAuxFieldStrStr(key, val string) bool {
@@ -137,7 +147,7 @@ func (rdb *Rdber) saveCksum() bool {
 	return true
 }
 
-func (rdb *Rdber) Load() error {
+func (rdb *Rdber) load() error {
 	p := make([]byte, 9, 9)
 	if rdb.readRaw(p) != 9 {
 		return errors.New("read magic number error")
@@ -155,11 +165,18 @@ func (rdb *Rdber) Load() error {
 
 	var expireTime int64 = -1
 	var now = time.Now().UnixMilli()
+loop:
 	for {
 		loadOpcode := true
 		typ := rdb.loadType()
 		switch typ {
 		case rdbOpcodeExpiretime:
+		case rdbOpcodeAux:
+			_, _ = rdb.loadAuxField()
+		case rdbOpcodeSelectdb:
+			_ = rdb.loadSelectDBNum()
+		case rdbOpcodeEOF:
+			break loop
 		default:
 			loadOpcode = false
 		}
@@ -254,7 +271,7 @@ func (rdb *Rdber) loadStringObject() *obj.Robj {
 	case int64:
 		return obj.New(v, obj.TypeString, obj.EncodingInt)
 	case []byte:
-		return obj.New(string(v.([]byte)), obj.TypeString, obj.EncodingRaw)
+		return obj.New(sds.SDS(v.([]byte)), obj.TypeString, obj.EncodingRaw)
 	default:
 		return nil
 	}
