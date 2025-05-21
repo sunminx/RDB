@@ -24,6 +24,7 @@ func main() {
 	//slog.SetLogLoggerLevel(common.ToSlogLevel(server.LogLevel))
 
 	slog.Info(common.Logo(server.Version))
+	server.LoadDataFromDisk()
 
 	var opts = []gnet.Option{
 		gnet.WithReusePort(true),

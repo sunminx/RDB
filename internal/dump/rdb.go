@@ -29,16 +29,24 @@ type Rdber struct {
 	info  rdberInfo
 }
 
-func newRdbSaver(file *os.File, db *db.DB, rdberInfo rdberInfo) (*Rdber, error) {
-	wr, err := rio.NewWriter(file)
-	if err != nil {
-		return nil, errors.Join(err, errors.New("cannot create rio writer"))
+func newRdbSaver(file *os.File, mode byte, db *db.DB, rdberInfo rdberInfo) (*Rdber, error) {
+	rdber := Rdber{db: db, info: rdberInfo}
+	if mode == 'r' {
+		rd, err := rio.NewReader(file)
+		if err != nil {
+			return nil, errors.Join(err, errors.New("can't create rio reader"))
+		}
+		rdber.rd = rd
+		return &rdber, nil
+	} else if mode == 'w' {
+		wr, err := rio.NewWriter(file)
+		if err != nil {
+			return nil, errors.Join(err, errors.New("can't create rio writer"))
+		}
+		rdber.wr = wr
+		return &rdber, nil
 	}
-	return &Rdber{
-		wr:   wr,
-		db:   db,
-		info: rdberInfo,
-	}, nil
+	return nil, errors.New("invalide mode")
 }
 
 func (rdb *Rdber) save() error {
@@ -484,7 +492,6 @@ func (rdb *Rdber) genericLoadLen() (uint64, bool) {
 
 func (rdb *Rdber) saveLen(ln uint64) bool {
 	var buf = make([]byte, 1, 1)
-
 	switch {
 	case ln < (1 << 6):
 		buf[0] = uint8(ln&0xff) | (rdb_6bitlen << 6)

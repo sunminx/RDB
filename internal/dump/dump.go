@@ -40,6 +40,27 @@ const (
 	rdbChildTypeSocket = 2 // rdb is written to slave socket.
 )
 
+func (d Dumper) RdbLoad(server *networking.Server) bool {
+	filename := server.RdbFilename
+	file, err := os.Open(filename)
+	if err != nil {
+		return false
+	}
+	defer file.Close()
+
+	rdber, err := newRdbSaver(file, 'r', server.DB, newRdberInfo(server))
+	if err != nil {
+		slog.Warn("can't create rdber for load", "err", err)
+		return false
+	}
+	if err := rdber.Load(); err != nil {
+		slog.Warn("failed load RDB file", "err", err)
+		return false
+	}
+	slog.Info("load RDB file success")
+	return true
+}
+
 func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 	if !server.RdbChildRunning.CompareAndSwap(
 		networking.ChildNotInRunning, networking.ChildInRunning) {
@@ -70,15 +91,15 @@ func rdbSave(server *networking.Server) bool {
 	tempfile := fmt.Sprintf("temp-%d.rdb", os.Getgid())
 	file, err := os.Create(tempfile)
 	if err != nil {
-		slog.Warn("failed opening the RDB file for saving",
+		slog.Warn("failed opening the RDB file for save",
 			"filename", filename, "err", err)
 		return nosave
 	}
 	defer file.Close()
 
-	rdber, err := newRdbSaver(file, server.DB, newRdberInfo(server))
+	rdber, err := newRdbSaver(file, 'w', server.DB, newRdberInfo(server))
 	if err != nil {
-		slog.Warn("cannot create rdber for saving")
+		slog.Warn("can't create rdber for save", "err", err)
 		return nosave
 	}
 	if err = rdber.save(); err != nil {
@@ -299,7 +320,7 @@ func aofRewrite(server *networking.Server) bool {
 	}()
 
 	if server.AofUseRdbPreamble {
-		rdber, err := newRdbSaver(file, server.DB, newRdberInfo(server))
+		rdber, err := newRdbSaver(file, 'w', server.DB, newRdberInfo(server))
 		if err != nil {
 			slog.Warn("cannot create rdber for saving")
 			return false

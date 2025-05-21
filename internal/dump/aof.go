@@ -304,7 +304,7 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 			// Since redis 7.x aof-chunking
 			slog.Info("reading RDB base file on AOF loading...")
 		}
-		rdber, err := newRdbSaver(aof.file, server.DB, newRdberInfo(server))
+		rdber, err := newRdbSaver(aof.file, 'r', server.DB, newRdberInfo(server))
 		if err != nil {
 			slog.Warn("failed create rdber before loading", "filename", filename, "err", err)
 			return aofFailed

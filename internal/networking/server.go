@@ -66,6 +66,11 @@ type Server struct {
 }
 
 const (
+	AofOff = 0
+	AofOn  = 1
+)
+
+const (
 	ChildInRunning    = true
 	ChildNotInRunning = false
 )
@@ -76,6 +81,7 @@ type SaveParam struct {
 }
 
 type dumper interface {
+	RdbLoad(*Server) bool
 	RdbSaveBackground(*Server) bool
 	RdbSaveBackgroundDoneHandler(*Server)
 	AofRewriteBackground(*Server) bool
@@ -196,6 +202,7 @@ func NewServer() *Server {
 		RdbVersion:    9,
 		LastSave:      now.UnixMilli(),
 		RdbFilename:   "dump.rdb",
+		AofState:      AofOff,
 	}
 }
 
@@ -230,6 +237,17 @@ func (s *Server) Init() {
 			}
 		}
 	}()
+}
+
+func (s *Server) LoadDataFromDisk() {
+	start := time.Now()
+	if s.AofState == AofOn {
+		slog.Info("AOF loaded from disk", "timecost(s)", time.Since(start).Milliseconds())
+	} else {
+		if s.Dumper.RdbLoad(s) {
+			slog.Info("DB loaded from disk", "timecost(s)", time.Since(start).Milliseconds())
+		}
+	}
 }
 
 func (s *Server) LookupCommand(name string) (cmd.Command, bool) {
@@ -284,7 +302,7 @@ func (s *Server) cron() {
 		}
 
 		if !s.isBgsaveOrAofRewriteRunning() && s.DB.InNormalState() &&
-			s.AofState == 1 &&
+			s.AofState == AofOn &&
 			s.AofRewritePerc > 0 && s.AofCurrSize > s.AofRewriteMinSize {
 			// Calculate whether the growth rate of the current AOF file size
 			// after the last rewrite exceeds the threshold.
