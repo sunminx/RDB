@@ -150,7 +150,8 @@ func (zl *Ziplist) decodeEntryEncoding(offset int32) (strorint int8,
 	lensize, ln int32) {
 	// _type: first two bit of byte
 	_type := []byte(*zl)[offset] & zipStrMask
-	encoding := []byte(*zl)[offset : offset+5]
+	roffset := util.Cond(offset+5 > zl.Zlbytes(), zl.Zlbytes(), offset+5)
+	encoding := []byte(*zl)[offset:roffset]
 	if _type < zipStrMask { // string
 		strorint = strType
 		lensize, ln = zipStrSize(_type, encoding)

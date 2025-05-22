@@ -121,7 +121,7 @@ func LLenCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
-	llen := list.Len(val)
+	llen := list.Cnt(val)
 	cli.AddReplyInt64(llen)
 	return OK
 }

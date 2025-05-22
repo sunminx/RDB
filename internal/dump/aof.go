@@ -139,7 +139,7 @@ func (aof *Aofer) rewriteStringObject(key string, val *obj.Robj) bool {
 const aofRewriteItemsPerCmd = 64
 
 func (aof *Aofer) rewriteListObject(key string, val *obj.Robj) bool {
-	batch, entries := 0, list.Len(val)
+	batch, entries := 0, list.Cnt(val)
 	iter := list.NewIterator(val)
 	for iter.HasNext() {
 		if batch == 0 {

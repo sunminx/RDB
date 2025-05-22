@@ -70,9 +70,9 @@ func Index(robj *obj.Robj, idx int64) ([]byte, bool) {
 	return nil, false
 }
 
-func Len(robj *obj.Robj) int64 {
+func Cnt(robj *obj.Robj) int64 {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
-		return unwrap(robj).Len()
+		return unwrap(robj).Cnt()
 	}
 	return 0
 }

@@ -42,6 +42,10 @@ func (ql *Quicklist) deepcopy() *Quicklist {
 }
 
 func (ql *Quicklist) Len() int64 {
+	return ql.ln
+}
+
+func (ql *Quicklist) Cnt() int64 {
 	return ql.cnt
 }
 
@@ -360,7 +364,6 @@ func (ql *Quicklist) Index(idx int64) ([]byte, bool) {
 	if idx >= ql.cnt {
 		return nil, false
 	}
-
 	var entry []byte
 	iter := newQuicklistIterator(ql)
 	for idx >= 0 && iter.HasNext() {

@@ -252,12 +252,12 @@ func (rdb *Rdber) loadListObject() *obj.Robj {
 		return nil
 	}
 	ql := list.NewQuicklist()
-	var i uint64
-	for ; i < ln; i++ {
+	for ln > 0 {
 		v := rdb.genericLoadStringObject()
 		zl := ds.Ziplist(v.([]byte))
 		node := list.CreateQuicklistNode(&zl)
 		ql.Link(node)
+		ln--
 	}
 	return obj.New(ql, obj.TypeList, obj.EncodingQuicklist)
 }
@@ -340,12 +340,12 @@ func (rdb *Rdber) saveObjectType(val *obj.Robj) bool {
 		return saved
 	case obj.TypeList:
 		if val.CheckEncoding(obj.EncodingQuicklist) {
-			rdb.saveType(rdbTypeListQuicklist)
+			rdb.saveType(rdbTypeList)
 		}
 		return saved
 	case obj.TypeHash:
 		if val.CheckEncoding(obj.EncodingZipmap) {
-			rdb.saveType(rdbTypeHashZipmap)
+			rdb.saveType(rdbTypeHash)
 		}
 		return saved
 	default:
@@ -422,10 +422,11 @@ func (rdb *Rdber) saveListObject(val *obj.Robj) bool {
 		node := ql.Head()
 		for node != nil {
 			li := node.List()
-			if !rdb.saveLen(uint64(li.Zlbytes())) {
+			ln := li.Zlbytes()
+			if !rdb.saveLen(uint64(ln)) {
 				return nosave
 			}
-			if !rdb.writeRaw([]byte(*li)) {
+			if !rdb.writeRaw([]byte(*li)[:ln]) {
 				return nosave
 			}
 			node = node.Next()
