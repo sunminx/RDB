@@ -2,7 +2,10 @@ module github.com/sunminx/RDB
 
 go 1.23.0
 
-require github.com/panjf2000/gnet/v2 v2.7.2
+require (
+	github.com/panjf2000/gnet v1.6.7
+	github.com/panjf2000/gnet/v2 v2.7.2
+)
 
 require (
 	github.com/panjf2000/ants/v2 v2.11.0 // indirect

@@ -38,6 +38,10 @@ func Load(server *networking.Server, filename string) {
 
 			argv[0] = strings.ToLower(argv[0])
 			switch {
+			case argv[0] == "daemonize" && len(argv) == 2:
+				if argv[1] == "yes" {
+					server.Daemonize = true
+				}
 			case argv[0] == "timeout" && len(argv) == 2:
 				var timeout int64
 				timeout, err = strconv.ParseInt(argv[1], 10, 64)

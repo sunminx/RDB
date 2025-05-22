@@ -18,6 +18,7 @@ var assert = debug.Assert
 
 type Server struct {
 	gnet.BuiltinEventEngine
+	Daemonize           bool
 	MaxIdleTime         int64
 	TcpKeepalive        int
 	ProtectedMode       bool
@@ -184,6 +185,7 @@ const defMaxFd = 1024
 func NewServer() *Server {
 	now := time.Now()
 	return &Server{
+		Daemonize:     false,
 		MaxIdleTime:   0,
 		TcpKeepalive:  300,
 		ProtectedMode: false,
