@@ -22,12 +22,17 @@ func main() {
 
 	server := networking.NewServer()
 	conf.Load(server, configfile)
+
 	if server.Daemonize {
 		subprocess := flag.Bool("subprocess", false, "flag subprocess")
 		flag.Parse()
 		// Determine whether it is a parent process or a child process
 		// through the subprocess startup flag.
 		if *subprocess == false {
+			if server.LogPath == "" {
+				slog.Info("the logfile configuration is necessary in daemonize mode")
+				os.Exit(1)
+			}
 			daemonize()
 		}
 	}
@@ -65,7 +70,7 @@ func daemonize() {
 	args = append(args, "-subprocess")
 	cmd := exec.Command(name, args...)
 	cmd.Stdin = nil
-	cmd.Stdout = os.Stdout
+	cmd.Stdout = nil
 	cmd.Stderr = nil
 	cmd.SysProcAttr = &syscall.SysProcAttr{Setsid: true}
 	if err = cmd.Start(); err != nil {
