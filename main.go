@@ -49,6 +49,7 @@ func main() {
 	}
 
 	server.LoadDataFromDisk()
+	server.OpenAofFileIfNeeded()
 
 	var opts = []gnet.Option{
 		gnet.WithReusePort(true),

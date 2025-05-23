@@ -52,6 +52,7 @@ type Client struct {
 	bulklen         int
 	argc            int
 	argv            [][]byte
+	argSlice        []byte
 	cmd             cmd.Command
 	multiState      *multiState
 	reply           []byte
@@ -416,17 +417,28 @@ func (c *Client) MultiExec() {
 }
 
 func (c *Client) call() bool {
-	if c.cmdLock.TryLock() {
-		_ = c.cmd.Proc(c)
-		c.flag &= ^queueCall
-		c.cmdLock.Unlock()
-		c.Server.UnlockNotice <- struct{}{}
-		return execed
-	} else {
+	if !c.cmdLock.TryLock() {
 		c.flag |= queueCall
 		c.Server.RunnableClientCh <- c
 		return nonExec
 	}
+
+	dirty := c.Server.Dirty
+	_ = c.cmd.Proc(c)
+	dirty = c.Server.Dirty - dirty
+
+	if dirty > 0 {
+
+	}
+
+	c.flag &= ^queueCall
+	c.cmdLock.Unlock()
+	c.Server.UnlockNotice <- struct{}{}
+	return execed
+}
+
+func (c *Client) FeedAppendOnlyFile(argc int, argv [][]byte) {
+
 }
 
 func (c *Client) Wake() {

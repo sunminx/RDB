@@ -40,7 +40,7 @@ const (
 	rdbChildTypeSocket = 2 // rdb is written to slave socket.
 )
 
-func (d Dumper) RdbLoad(server *networking.Server) bool {
+func (_ Dumper) RdbLoad(server *networking.Server) bool {
 	filename := server.RdbFilename
 	file, err := os.Open(filename)
 	if err != nil {
@@ -61,7 +61,7 @@ func (d Dumper) RdbLoad(server *networking.Server) bool {
 	return true
 }
 
-func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
+func (_ Dumper) RdbSaveBackground(server *networking.Server) bool {
 	if !server.RdbChildRunning.CompareAndSwap(
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
@@ -167,7 +167,7 @@ const (
 	noRewrite = false
 )
 
-func AofLoad(server *networking.Server) bool {
+func (_ Dumper) AofLoad(server *networking.Server) bool {
 	filepath := makePath(server.AofDirname,
 		aofManifestFilename(server.AofFilename))
 	file, err := os.Open(filepath)
@@ -286,7 +286,7 @@ func aofLoadUnChunkMode(server *networking.Server) bool {
 	return ret == aofOk || ret == aofTruncated
 }
 
-func (d Dumper) AofRewriteBackground(server *networking.Server) bool {
+func (_ Dumper) AofRewriteBackground(server *networking.Server) bool {
 	if !server.AofChildRunning.CompareAndSwap(
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
@@ -299,15 +299,17 @@ func (d Dumper) AofRewriteBackground(server *networking.Server) bool {
 	server.DB.SetState(db.InPersistState)
 	server.CmdLock.Unlock()
 	now := time.Now()
-	go aofRewrite(server)
+	filepath := makePath(server.AofDirname, server.AofFilename)
+	go aofRewrite(filepath, server)
 	slog.Info("background saving started")
 	server.AofRewriteTimeStart = now.UnixMilli()
 	return true
 }
 
-func aofRewrite(server *networking.Server) bool {
+func aofRewrite(filepath string, server *networking.Server) bool {
 	tempFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
-	file, err := os.Create(tempFilename)
+	tempFilepath := makePath(server.AofDirname, tempFilename)
+	file, err := os.Create(tempFilepath)
 	if err != nil {
 		slog.Warn("failed create temp aof file", "err", err)
 	}
@@ -350,7 +352,7 @@ func aofRewrite(server *networking.Server) bool {
 		return false
 	}
 	file = nil
-	if err := os.Rename(tempFilename, server.AofFilename); err != nil {
+	if err := os.Rename(tempFilepath, filepath); err != nil {
 		slog.Warn("failed rename rewritten aof file", "err", err)
 		return false
 	}
@@ -414,4 +416,47 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 	server.AofChildRunning.Store(networking.ChildNotInRunning)
 	slog.Info("Background AOF rewrite signal handler done")
 	server.CmdLock.Unlock()
+}
+
+func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
+	var am *aofManifest
+	amFilepath := makePath(server.AofDirname, aofManifestFilename(server.AofFilename))
+	amFile, err := os.Open(amFilepath)
+	if err != nil {
+		if err == os.ErrNotExist {
+			am = newAofManifest()
+		} else {
+			slog.Error("can't create AOF manifest file on server start", "err", err)
+			os.Exit(1)
+		}
+	}
+	defer amFile.Close()
+	am, err = createAofManifest(amFile)
+	if err != nil {
+		slog.Error("failed open AOF manifest file on server start", "err", err)
+	}
+
+	if am.baseAofInfo == nil && len(am.incrAofInfos) == 0 {
+		aofBaseFilename := am.nextBaseAofName(server)
+		aofBaseFilepath := makePath(server.AofDirname, aofBaseFilename)
+		if !aofRewrite(aofBaseFilepath, server) {
+			slog.Error("failed rewrite AOF file when database is empty")
+			os.Exit(1)
+		}
+	}
+
+	aofIncrFilename := am.nextIncrAofName(server)
+	aofIncrFilepath := makePath(server.AofDirname, aofIncrFilename)
+	aofIncrFile, err := os.OpenFile(aofIncrFilepath,
+		os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		slog.Error("can't open Aof incr file on server start", "err", err)
+		os.Exit(1)
+	}
+	server.AofFile = aofIncrFile
+
+	if err := am.persist(server); err != nil {
+		slog.Error("can't write AOF manifest file on server start", "err", err)
+		os.Exit(1)
+	}
 }

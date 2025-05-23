@@ -3,6 +3,7 @@ package networking
 import (
 	"fmt"
 	"log/slog"
+	"os"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -18,6 +19,7 @@ var assert = debug.Assert
 
 type Server struct {
 	gnet.BuiltinEventEngine
+	Dumper
 	Daemonize           bool
 	MaxIdleTime         int64
 	TcpKeepalive        int
@@ -39,7 +41,6 @@ type Server struct {
 	RunnableClientCh    chan *Client
 	CmdLock             *sync.RWMutex
 	UnlockNotice        chan struct{}
-	Dumper              dumper
 	RdbVersion          int
 	RdbFilename         string
 	RdbChildType        int
@@ -52,6 +53,8 @@ type Server struct {
 	LastSave            int64
 	Dirty               int
 	DirtyBeforeBgsave   int
+	AofFile             *os.File
+	AofBuf              []byte
 	AofChildRunning     atomic.Bool
 	AofFilename         string
 	AofDirname          string
@@ -81,12 +84,14 @@ type SaveParam struct {
 	Changes int
 }
 
-type dumper interface {
+type Dumper interface {
 	RdbLoad(*Server) bool
 	RdbSaveBackground(*Server) bool
 	RdbSaveBackgroundDoneHandler(*Server)
+	AofLoad(*Server) bool
 	AofRewriteBackground(*Server) bool
 	AofRewriteBackgroundDoneHandler(*Server)
+	AofOpenOnServerStart(*Server)
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -182,6 +187,9 @@ func (s *Server) readQuery(cli *Client) bool {
 
 const defMaxFd = 1024
 
+// The default capacity of the aof output buffer.
+const defAofBufCapacity = 1024 * 1024 * 10
+
 func NewServer() *Server {
 	now := time.Now()
 	return &Server{
@@ -205,6 +213,7 @@ func NewServer() *Server {
 		LastSave:      now.UnixMilli(),
 		RdbFilename:   "dump.rdb",
 		AofState:      AofOff,
+		AofBuf:        make([]byte, 0, defAofBufCapacity),
 	}
 }
 
@@ -244,11 +253,19 @@ func (s *Server) Init() {
 func (s *Server) LoadDataFromDisk() {
 	start := time.Now()
 	if s.AofState == AofOn {
-		slog.Info("AOF loaded from disk", "timecost(s)", time.Since(start).Milliseconds())
+		if s.AofLoad(s) {
+			slog.Info("AOF loaded from disk", "timecost(s)", time.Since(start).Milliseconds())
+		}
 	} else {
-		if s.Dumper.RdbLoad(s) {
+		if s.RdbLoad(s) {
 			slog.Info("DB loaded from disk", "timecost(s)", time.Since(start).Milliseconds())
 		}
+	}
+}
+
+func (s *Server) OpenAofFileIfNeeded() {
+	if s.AofState == AofOn {
+		s.AofOpenOnServerStart(s)
 	}
 }
 
@@ -282,9 +299,9 @@ func (s *Server) cron() {
 		select {
 		case t := <-s.BackgroundDoneChan:
 			if t == DoneRdbBgsave {
-				s.Dumper.RdbSaveBackgroundDoneHandler(s)
+				s.RdbSaveBackgroundDoneHandler(s)
 			} else if t == DoneAofBgsave {
-				s.Dumper.AofRewriteBackgroundDoneHandler(s)
+				s.AofRewriteBackgroundDoneHandler(s)
 			}
 		default:
 		}
@@ -298,7 +315,7 @@ func (s *Server) cron() {
 
 				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...\n",
 					sp.Changes, sp.Seconds))
-				_ = s.Dumper.RdbSaveBackground(s)
+				_ = s.RdbSaveBackground(s)
 				break
 			}
 		}
@@ -312,7 +329,7 @@ func (s *Server) cron() {
 			growth := (s.AofCurrSize*100)/base - 100
 			if growth >= s.AofRewritePerc {
 				slog.Info(fmt.Sprintf("starting automatic rewriting of AOF on %d%% growth\n", growth))
-				_ = s.Dumper.AofRewriteBackground(s)
+				_ = s.AofRewriteBackground(s)
 			}
 
 		}
