@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
+	"strings"
 	"time"
 
 	"github.com/sunminx/RDB/internal/db"
@@ -168,12 +169,11 @@ const (
 )
 
 func (_ Dumper) AofLoad(server *networking.Server) bool {
-	filepath := makePath(server.AofDirname,
-		aofManifestFilename(server.AofFilename))
-	file, err := os.Open(filepath)
+	filename := aofManifestFilename(server.AofFilename)
+	filepath := makePath(server.AofDirname, filename)
+	file, err := os.Open(filename)
 	if err != nil {
-		slog.Warn("failed open AOF manifest file",
-			"filepath", filepath, "err", err)
+		slog.Info("quit AOF load", "filepath", filepath, "reason", err)
 		return false
 	}
 	defer file.Close()
@@ -183,7 +183,7 @@ func (_ Dumper) AofLoad(server *networking.Server) bool {
 		return aofLoadChunkMode(am, server)
 	}
 	if err != errManifestFileNotFound {
-		slog.Warn("failed load aof file", "err", err)
+		slog.Warn("failed load AOF file", "err", err)
 		return false
 	}
 	return aofLoadUnChunkMode(server)
@@ -198,57 +198,67 @@ func aofLoadChunkMode(am *aofManifest, server *networking.Server) bool {
 	if am == nil || am.baseAofInfo == nil || len(am.incrAofInfos) == 0 {
 		return false
 	}
-	ret := aofOk
-	fileNum := am.fileNum()
-	currFileIdx := 0
+
+	var (
+		fileNum     = am.fileNum()
+		currFileIdx = 0
+		baseSize    = int64(0)
+		totalSize   = int64(0)
+		file        *os.File
+		err         error
+	)
+
 	aof := newAofer(server.DB)
+	aof.fakeCli.Server = server
 	if am.baseAofInfo != nil {
 		currFileIdx++
 		filename := am.baseAofInfo.name
-		file, err := os.Create(filename)
+		file, err = os.Open(filename)
 		if err != nil {
-			slog.Warn("failed create temp aof file", "err", err)
+			slog.Warn("failed create temp AOF file", "err", err)
+			return false
 		}
 		defer file.Close()
 
+		baseSize = getAppendOnlyFileSize(file)
+		totalSize += baseSize
+
 		if err := aof.setFile(file, 'r'); err != nil {
-			slog.Warn("failed loading base aof file", "err", err)
-			ret = aofOpenErr
-			goto cleanup
+			slog.Warn("failed loading base AOF file", "err", err)
+			return false
 		}
 		now := time.Now()
-		ret = aof.loadSingleFile(filename, server)
+		slog.Info("load AOF base file start")
+		ret := aof.loadSingleFile(filename, server)
 		if ret == aofOk || (ret == aofTruncated && currFileIdx == fileNum) {
-			slog.Info("DB loaded from base aof file",
+			slog.Info("DB loaded from base AOF file",
 				"filename", filename, "timecost", time.Since(now)/1e9)
-		}
-
-		if ret == aofTruncated && currFileIdx < fileNum {
-			ret = aofFailed
+		} else if ret == aofTruncated && currFileIdx < fileNum {
 			slog.Warn("fatal error: the truncated file is not the last file")
-		}
-
-		if ret == aofOpenErr || ret == aofFailed {
-			goto cleanup
+			return false
+		} else if ret == aofOpenErr || ret == aofFailed {
+			slog.Warn("failed load AOF base file")
+			return false
 		}
 	}
 
 	for _, incrAofInfo := range am.incrAofInfos {
 		currFileIdx++
 		filename := incrAofInfo.name
-		file, err := os.Create(filename)
+		file, err = os.Open(filename)
 		if err != nil {
 			slog.Warn("failed create temp aof file", "err", err)
 		}
 		defer file.Close()
 
+		totalSize += getAppendOnlyFileSize(file)
+
 		if err := aof.setFile(file, 'r'); err != nil {
 			slog.Warn("failed loading incr aof file", "err", err)
-			ret = aofOpenErr
-			goto cleanup
+			return false
 		}
 		now := time.Now()
-		ret = aof.loadSingleFile(filename, server)
+		ret := aof.loadSingleFile(filename, server)
 		if ret == aofOk || (ret == aofTruncated && currFileIdx == fileNum) {
 			slog.Info("DB loaded from incr aof file",
 				"filename", filename, "timecost", time.Since(now)/1e9)
@@ -260,12 +270,13 @@ func aofLoadChunkMode(am *aofManifest, server *networking.Server) bool {
 		}
 
 		if ret == aofOpenErr || ret == aofFailed {
-			goto cleanup
+			return false
 		}
 	}
-cleanup:
-	aof.closeFile()
-	return ret == aofOk || ret == aofTruncated
+
+	server.AofCurrSize = totalSize
+	server.AofRewriteBaseSize = baseSize
+	return true
 }
 
 // aofLoadUnChunkMode load aof file stored by aof-use-rdb-preamble or only aof.
@@ -286,6 +297,11 @@ func aofLoadUnChunkMode(server *networking.Server) bool {
 	return ret == aofOk || ret == aofTruncated
 }
 
+func getAppendOnlyFileSize(file *os.File) int64 {
+	fileInfo, _ := file.Stat()
+	return fileInfo.Size()
+}
+
 func (_ Dumper) AofRewriteBackground(server *networking.Server) bool {
 	if !server.AofChildRunning.CompareAndSwap(
 		networking.ChildNotInRunning, networking.ChildInRunning) {
@@ -299,8 +315,7 @@ func (_ Dumper) AofRewriteBackground(server *networking.Server) bool {
 	server.DB.SetState(db.InPersistState)
 	server.CmdLock.Unlock()
 	now := time.Now()
-	filepath := makePath(server.AofDirname, server.AofFilename)
-	go aofRewrite(filepath, server)
+	go aofRewrite("", server)
 	slog.Info("background saving started")
 	server.AofRewriteTimeStart = now.UnixMilli()
 	return true
@@ -311,15 +326,9 @@ func aofRewrite(filepath string, server *networking.Server) bool {
 	tempFilepath := makePath(server.AofDirname, tempFilename)
 	file, err := os.Create(tempFilepath)
 	if err != nil {
-		slog.Warn("failed create temp aof file", "err", err)
+		slog.Warn("failed create temp AOF file", "err", err)
 	}
 	defer file.Close()
-
-	defer func() {
-		if file != nil {
-			file.Close()
-		}
-	}()
 
 	if server.AofUseRdbPreamble {
 		rdber, err := newRdbSaver(file, 'w', server.DB, newRdberInfo(server))
@@ -347,14 +356,11 @@ func aofRewrite(filepath string, server *networking.Server) bool {
 		slog.Warn("failed sync rewritten temp aof file", "err", err)
 		return false
 	}
-	if err := file.Close(); err != nil {
-		slog.Warn("failed close rewritten temp aof file", "err", err)
-		return false
-	}
-	file = nil
-	if err := os.Rename(tempFilepath, filepath); err != nil {
-		slog.Warn("failed rename rewritten aof file", "err", err)
-		return false
+	if filepath != "" {
+		if err = os.Rename(tempFilepath, filepath); err != nil {
+			slog.Warn("failed rename temp file", "filepath", filepath, "err", err)
+			return false
+		}
 	}
 	server.BackgroundDoneChan <- networking.DoneAofBgsave
 	return true
@@ -379,21 +385,38 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 			return
 		}
 
-		tempBaseFilename := fmt.Sprintf("temp-rewriteaof-bg-%d.aof", os.Getpid())
+		tempBaseFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
 		baseFilename := am.nextBaseAofName(server)
-		if err := os.Rename(tempBaseFilename,
-			makePath(server.AofDirname, baseFilename)); err != nil {
+		baseFilepath := makePath(server.AofDirname, baseFilename)
+		if err := os.Rename(tempBaseFilename, baseFilepath); err != nil {
 			slog.Warn("failed trying to rename temporary AOF base file", "err", err)
 			return
 		}
 
-		tempIncrFilename := tempIncrAofName(server.AofFilename)
-		incrFilename := am.nextIncrAofName(server)
-		if err := os.Rename(
-			makePath(server.AofDirname, tempIncrFilename),
-			makePath(server.AofDirname, incrFilename)); err != nil {
-			slog.Warn("failed trying to rename tempory AOF incr file", "err", err)
-			return
+		baseFile, err := os.Open(baseFilepath)
+		if err != nil {
+			slog.Warn("can't open AOF base file for refresh rewrite_base_size", "err", err)
+		} else {
+			baseFileInfo, err := baseFile.Stat()
+			if err != nil {
+				slog.Warn("can't call to stat function on AOF base file for refresh rewrite_base_size",
+					"err", err)
+			} else {
+				server.AofRewriteBaseSize = baseFileInfo.Size()
+			}
+			baseFile.Close()
+		}
+
+		if server.AofState == networking.AofWaitRewrite {
+			tempIncrFilename := tempIncrAofName(server.AofFilename)
+			incrFilename := am.nextIncrAofName(server)
+			if err := os.Rename(
+				makePath(server.AofDirname, tempIncrFilename),
+				makePath(server.AofDirname, incrFilename)); err != nil {
+				slog.Warn("failed trying to rename tempory AOF incr file", "err", err)
+				return
+			}
+
 		}
 
 		am.moveIncrAofToHist()
@@ -423,7 +446,7 @@ func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
 	amFilepath := makePath(server.AofDirname, aofManifestFilename(server.AofFilename))
 	amFile, err := os.Open(amFilepath)
 	if err != nil {
-		if err == os.ErrNotExist {
+		if strings.Index(err.Error(), "no such file or directory") != -1 {
 			am = newAofManifest()
 		} else {
 			slog.Error("can't create AOF manifest file on server start", "err", err)
@@ -431,12 +454,15 @@ func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
 		}
 	}
 	defer amFile.Close()
-	am, err = createAofManifest(amFile)
-	if err != nil {
-		slog.Error("failed open AOF manifest file on server start", "err", err)
+
+	if am == nil {
+		am, err = createAofManifest(amFile)
+		if err != nil {
+			slog.Error("failed open AOF manifest file on server start", "err", err)
+		}
 	}
 
-	if am.baseAofInfo == nil && len(am.incrAofInfos) == 0 {
+	if am.baseAofInfo == nil {
 		aofBaseFilename := am.nextBaseAofName(server)
 		aofBaseFilepath := makePath(server.AofDirname, aofBaseFilename)
 		if !aofRewrite(aofBaseFilepath, server) {
@@ -445,7 +471,13 @@ func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
 		}
 	}
 
-	aofIncrFilename := am.nextIncrAofName(server)
+	var aofIncrFilename string
+	if am.currIncrFileSeq != 0 {
+		idx := am.currIncrFileSeq - 1
+		aofIncrFilename = am.incrAofInfos[idx].name
+	} else {
+		aofIncrFilename = am.nextIncrAofName(server)
+	}
 	aofIncrFilepath := makePath(server.AofDirname, aofIncrFilename)
 	aofIncrFile, err := os.OpenFile(aofIncrFilepath,
 		os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)

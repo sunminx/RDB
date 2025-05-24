@@ -22,6 +22,7 @@ package dump
 // └── appendonly.aof.manifest    # record sharding information
 
 import (
+	"bufio"
 	"errors"
 	"fmt"
 	"io"
@@ -296,6 +297,7 @@ func (aof *Aofer) loadSingleFile(filename string, server *networking.Server) int
 		slog.Warn("failed seek to the starting position of the AOF file", "filename", filename)
 		return aofFailed
 	}
+
 	if preambleMode {
 		// Since redis 4.x aof-use-rdb-preamble
 		if server.AofFilename == filename {
@@ -500,19 +502,23 @@ func newAofInfo() *aofInfo {
 func (ai *aofInfo) format() []byte {
 	buf := make([]byte, 0)
 	buf = append(buf, []byte(aofManifestKeyFileName)...)
-	buf = append(buf, ' ')
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(ai.name)...)
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(aofManifestKeyFileSeq)...)
-	buf = append(buf, ' ')
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(strconv.FormatInt(ai.seq, 10))...)
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(aofManifestKeyFileType)...)
-	buf = append(buf, ' ')
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, byte(ai.typ))
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(aofManifestKeyFileStartoffset)...)
-	buf = append(buf, ' ')
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(strconv.FormatInt(ai.startOffset, 10))...)
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(aofManifestKeyFileEndoffset)...)
-	buf = append(buf, ' ')
+	buf = append(buf, []byte(" ")...)
 	buf = append(buf, []byte(strconv.FormatInt(ai.endOffset, 10))...)
 	buf = append(buf, []byte("\n")...)
 	return buf
@@ -533,9 +539,9 @@ var errManifestFileNotFound = errors.New("manifest file not found")
 
 func createAofManifest(file *os.File) (*aofManifest, error) {
 	am := newAofManifest()
-	buf := make([]byte, 1024)
+	rd := bufio.NewReader(file)
 	for {
-		n, err := file.Read(buf)
+		line, isPrefix, err := rd.ReadLine()
 		if err != nil {
 			if err == io.EOF {
 				slog.Info("read AOF manifest file finished")
@@ -544,15 +550,14 @@ func createAofManifest(file *os.File) (*aofManifest, error) {
 			return nil, errors.Join(err, errors.New("failed read AOF manifest file"))
 		}
 
-		if buf[0] == '#' {
+		if line[0] == '#' {
 			continue
 		}
-		if n >= manifestMaxLine {
+		if isPrefix || len(line) >= manifestMaxLine {
 			return nil, errors.New("the AOF manifest file contains too long line")
 		}
 
-		line := strings.Trim(string(buf[:n]), "\t\r\n")
-		argv := strings.Split(line, " ")
+		argv := strings.Split(string(line), " ")
 		argc := len(argv)
 		if argc < 6 || argc%2 != 0 {
 			return nil, errors.New("invalid AOF manifest file format")
@@ -565,7 +570,7 @@ func createAofManifest(file *os.File) (*aofManifest, error) {
 			switch argv[i] {
 			case aofManifestKeyFileName:
 				name := argv[i+1]
-				if strings.Index(name, "/") == -1 {
+				if strings.Index(name, "/") != -1 {
 					return nil, errors.New("file can't be a path, just a filename")
 				}
 				ai.name = name
@@ -643,7 +648,7 @@ func (am *aofManifest) nextBaseAofName(server *networking.Server) string {
 	formatSuffix := util.Cond(server.AofUseRdbPreamble, rdbFormatSuffix, aofFormatSuffix)
 	am.currBaseFileSeq++
 	ai.name = fmt.Sprintf("%s.%d%s%s", server.AofFilename, am.currBaseFileSeq,
-		formatSuffix, aofFormatSuffix)
+		baseFileSuffix, formatSuffix)
 	ai.typ = base
 	ai.seq = am.currBaseFileSeq
 	am.baseAofInfo = ai
@@ -753,5 +758,8 @@ func tempIncrAofName(aof string) string {
 }
 
 func makePath(path, filename string) string {
+	if path == "" {
+		path = "."
+	}
 	return path + "/" + filename
 }

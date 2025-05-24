@@ -224,6 +224,7 @@ var protoMaxBulkLen = 1024 * 1024 * 512
 func (c *Client) processMultibulkBuffer() bool {
 	var line []byte
 	if c.multibulklen == 0 {
+		c.argSlice = c.querybuf[:]
 		line, c.querybuf = splitLine(c.querybuf)
 		if line == nil {
 			return false
@@ -428,7 +429,7 @@ func (c *Client) call() bool {
 	dirty = c.Server.Dirty - dirty
 
 	if dirty > 0 {
-
+		c.afterCommand()
 	}
 
 	c.flag &= ^queueCall
@@ -437,8 +438,34 @@ func (c *Client) call() bool {
 	return execed
 }
 
-func (c *Client) FeedAppendOnlyFile(argc int, argv [][]byte) {
+func (c *Client) afterCommand() {
+	c.propagateNow(0)
+}
 
+func (c *Client) propagateNow(target int) {
+	if c.Server.AofState != AofOff {
+		c.feedAppendOnlyFile()
+	}
+}
+
+func (c *Client) feedAppendOnlyFile() {
+	buf := make([]byte, 0)
+
+	s := strconv.Itoa(c.argc)
+	buf = append(buf, '*')
+	buf = append(buf, []byte(s)...)
+	buf = append(buf, []byte("\r\n")...)
+
+	for _, arg := range c.argv {
+		s = strconv.Itoa(len(arg))
+		buf = append(buf, '$')
+		buf = append(buf, []byte(s)...)
+		buf = append(buf, []byte("\r\n")...)
+		buf = append(buf, arg...)
+		buf = append(buf, []byte("\r\n")...)
+	}
+
+	c.Server.AofBuf = append(c.Server.AofBuf, buf...)
 }
 
 func (c *Client) Wake() {

@@ -1,6 +1,7 @@
 *.swp
 *.rdb
 *.log
+appendonly.*
 .vscode/
 RDB
 tests/__pycache__/

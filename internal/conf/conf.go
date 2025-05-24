@@ -74,7 +74,8 @@ func Load(server *networking.Server, filename string) {
 			case argv[0] == "loglevel" && len(argv) == 2:
 				server.LogLevel = argv[1]
 			case argv[0] == "logfile" && len(argv) == 2:
-				server.LogPath = argv[1]
+				logfile := strings.Trim(argv[1], "\"")
+				server.LogPath = logfile
 			case argv[0] == "dbfilename" && len(argv) == 2:
 				server.RdbFilename = argv[1]
 			case argv[0] == "save":
@@ -92,22 +93,32 @@ func Load(server *networking.Server, filename string) {
 					}
 					saveParam := networking.SaveParam{Seconds: seconds, Changes: changes}
 					server.SaveParams = append(server.SaveParams, saveParam)
-				} else if len(argv) == 2 && argv[1] == "" {
+				} else if len(argv) == 2 && strings.Trim(argv[1], "\"") == "" {
 					server.SaveParams = nil
+				}
+			case argv[0] == "aof-use-rdb-preamble" && len(argv) == 2:
+				if argv[1] == "yes" {
+					server.AofUseRdbPreamble = true
 				}
 			case argv[0] == "appendonly" && len(argv) == 2:
 				if argv[1] == "yes" {
 					server.AofState = 1
 				}
+			case argv[0] == "appendfilename" && len(argv) == 2:
+				filename := strings.Trim(argv[1], "\"")
+				server.AofFilename = filename
 			case argv[0] == "auto-aof-rewrite-percentage" && len(argv) == 2:
-				if perc, err := strconv.Atoi(argv[1]); err != nil {
+				if perc, err := strconv.ParseInt(argv[1], 10, 64); err == nil {
 					server.AofRewritePerc = perc
 				}
 			case argv[0] == "auto-aof-rewrite-min-size" && len(argv) == 2:
+				if argv[1] == "0" {
+					break
+				}
 				re := regexp.MustCompile(`(\d+)([k|kb|m|mb|g|gb])`)
 				mt := re.FindStringSubmatch(argv[1])
 				if len(mt) == 3 {
-					v, _ := strconv.Atoi(mt[1])
+					v, _ := strconv.ParseInt(mt[1], 10, 64)
 					unit := mt[2]
 					if unit == "k" {
 						server.AofRewriteMinSize = 1000 * v

@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"sync/atomic"
+	"syscall"
 	"time"
 
 	"github.com/panjf2000/gnet/v2"
@@ -20,58 +21,66 @@ var assert = debug.Assert
 type Server struct {
 	gnet.BuiltinEventEngine
 	Dumper
-	Daemonize           bool
-	MaxIdleTime         int64
-	TcpKeepalive        int
-	ProtectedMode       bool
-	TcpBacklog          int
-	Ip                  string
-	Port                int
-	ProtoAddr           string
-	MaxFd               int
-	Clients             []*Client
-	cmds                []cmd.Command
-	Requirepass         bool
-	DB                  *db.DB
-	CronLoops           int64
-	Hz                  int
-	LogLevel            string
-	LogPath             string
-	Version             string
-	RunnableClientCh    chan *Client
-	CmdLock             *sync.RWMutex
-	UnlockNotice        chan struct{}
-	RdbVersion          int
-	RdbFilename         string
-	RdbChildType        int
-	RdbChildRunning     atomic.Bool
-	RdbSaveTimeStart    int64
-	RdbSaveTimeUsed     int64
-	BackgroundDoneChan  chan uint8
-	SaveParams          []SaveParam
-	UnixTime            int64
-	LastSave            int64
-	Dirty               int
-	DirtyBeforeBgsave   int
-	AofFile             *os.File
-	AofBuf              []byte
-	AofChildRunning     atomic.Bool
-	AofFilename         string
-	AofDirname          string
-	AofLoadTruncated    bool
-	AofUseRdbPreamble   bool
-	AofRewriteTimeStart int64
-	AofState            uint8
-	AofRewriteBaseSize  int
-	AofCurrSize         int
-	AofRewriteMinSize   int
-	AofRewritePerc      int
-	LoadingLoadedBytes  int64
+	Daemonize              bool
+	MaxIdleTime            int64
+	TcpKeepalive           int
+	ProtectedMode          bool
+	TcpBacklog             int
+	Ip                     string
+	Port                   int
+	ProtoAddr              string
+	MaxFd                  int
+	Clients                []*Client
+	cmds                   []cmd.Command
+	Requirepass            bool
+	DB                     *db.DB
+	CronLoops              int64
+	Hz                     int
+	LogLevel               string
+	LogPath                string
+	Version                string
+	RunnableClientCh       chan *Client
+	CmdLock                *sync.RWMutex
+	UnlockNotice           chan struct{}
+	RdbVersion             int
+	RdbFilename            string
+	RdbChildType           int
+	RdbChildRunning        atomic.Bool
+	RdbSaveTimeStart       int64
+	RdbSaveTimeUsed        int64
+	BackgroundDoneChan     chan uint8
+	SaveParams             []SaveParam
+	UnixTime               int64
+	LastSave               int64
+	Dirty                  int
+	DirtyBeforeBgsave      int
+	AofFile                *os.File
+	AofBuf                 []byte
+	AofLastWriteStatus     bool
+	AofFsync               int
+	AofFsyncInProgress     atomic.Bool
+	AofFsyncPostponedStart int64
+	AofChildRunning        atomic.Bool
+	AofFilename            string
+	AofDirname             string
+	AofLoadTruncated       bool
+	AofUseRdbPreamble      bool
+	AofRewriteTimeStart    int64
+	AofState               uint8
+	AofRewriteBaseSize     int64
+	AofCurrSize            int64
+	AofRewriteMinSize      int64
+	AofRewritePerc         int64
+	AofLastFsync           int64
+	AofLastIncrFsyncOffset int64
+	AofLastIncrSize        int64
+	LoadingLoadedBytes     int64
 }
 
 const (
-	AofOff = 0
-	AofOn  = 1
+	AofOff         = 0
+	AofOn          = 1
+	AofWaitRewrite = 2
 )
 
 const (
@@ -191,7 +200,7 @@ const defMaxFd = 1024
 const defAofBufCapacity = 1024 * 1024 * 10
 
 func NewServer() *Server {
-	now := time.Now()
+	start := time.Now()
 	return &Server{
 		Daemonize:     false,
 		MaxIdleTime:   0,
@@ -207,10 +216,10 @@ func NewServer() *Server {
 		CronLoops:     0,
 		Hz:            100,
 		LogLevel:      "notice",
-		LogPath:       "/dev/null",
+		LogPath:       "",
 		Version:       "0.0.1",
 		RdbVersion:    9,
-		LastSave:      now.UnixMilli(),
+		LastSave:      start.UnixMilli(),
 		RdbFilename:   "dump.rdb",
 		AofState:      AofOff,
 		AofBuf:        make([]byte, 0, defAofBufCapacity),
@@ -312,7 +321,7 @@ func (s *Server) cron() {
 			if s.Dirty >= sp.Changes &&
 				int(s.UnixTime-s.LastSave) > 1000*sp.Seconds &&
 				s.DB.InNormalState() {
-
+				// We reached the given amount of changes.
 				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...\n",
 					sp.Changes, sp.Seconds))
 				_ = s.RdbSaveBackground(s)
@@ -341,6 +350,74 @@ func (s *Server) cron() {
 		s.CmdLock.Unlock()
 	}
 
+	if s.AofState != AofOff {
+		s.flushAppendOnlyFile(false)
+	}
+
+}
+
+const (
+	aofFsyncNo     = 0
+	aofFsyncSec    = 1
+	aofFsyncAlways = 2
+)
+
+const (
+	aofWriteErr = false
+	aofWriteOk  = true
+)
+
+func (s *Server) flushAppendOnlyFile(force bool) {
+	if len(s.AofBuf) > 0 {
+		n, err := s.AofFile.Write(s.AofBuf)
+		if err != nil {
+			if err != syscall.EINTR {
+				if s.AofFsync == aofFsyncAlways {
+					slog.Error("can't recover from AOF write error" +
+						"when the AOF fsync policy is 'always'. Exiting...")
+					os.Exit(1)
+				}
+				s.AofLastWriteStatus = aofWriteErr
+			}
+		} else {
+			if s.AofLastWriteStatus == aofWriteErr {
+				slog.Info("AOF write error looks solved, Redis can write again")
+				s.AofLastWriteStatus = aofWriteOk
+			}
+		}
+		s.AofCurrSize += int64(n)
+		s.AofLastIncrSize += int64(n)
+		s.AofBuf = s.AofBuf[n:]
+	}
+
+	if s.AofFsync == aofFsyncNo {
+		return
+	}
+	if s.AofFsync == aofFsyncSec && !force {
+		if s.AofFsyncInProgress.Load() {
+			if s.AofFsyncPostponedStart == 0 {
+				s.AofFsyncPostponedStart = s.UnixTime
+				return
+			} else if s.UnixTime-s.AofRewriteTimeStart < 2*int64(time.Second) {
+				return
+			}
+		}
+	}
+
+	s.AofFsyncPostponedStart = 0
+
+	if s.AofFsync == aofFsyncAlways {
+		s.AofFile.Sync()
+	} else if s.AofFsync == aofFsyncSec && s.UnixTime-s.AofLastFsync > int64(time.Second) {
+		go func(fsyncFlag atomic.Bool) {
+			fsyncFlag.Store(true)
+			defer fsyncFlag.Store(false)
+			s.AofFile.Sync()
+
+		}(s.AofFsyncInProgress)
+	}
+	s.AofLastFsync = s.UnixTime
+	s.AofLastIncrFsyncOffset = s.AofLastIncrSize
 }
 
 func (s *Server) databasesCron() {
