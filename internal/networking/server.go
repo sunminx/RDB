@@ -75,6 +75,7 @@ type Server struct {
 	AofLastIncrFsyncOffset int64
 	AofLastIncrSize        int64
 	LoadingLoadedBytes     int64
+	Shutdown               bool
 }
 
 const (
@@ -441,6 +442,10 @@ func (s *Server) clientsCron() {
 
 func (s *Server) delClient(fd int) {
 	s.Clients = append(s.Clients[:fd], s.Clients[fd+1:]...)
+}
+
+func (s *Server) doAfterShutdown() {
+	os.Exit(0)
 }
 
 func (s *Server) isBgsaveOrAofRewriteRunning() bool {

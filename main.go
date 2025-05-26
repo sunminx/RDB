@@ -6,6 +6,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"os/signal"
 	"syscall"
 
 	"github.com/panjf2000/gnet/v2"
@@ -40,6 +41,8 @@ func main() {
 	server.Init()
 	server.Dumper = dump.New()
 
+	registerSignalHandler(server)
+
 	var logFile *os.File
 	if server.LogPath != "" {
 		logFile = initLog(server.LogPath, server.LogLevel)
@@ -59,6 +62,14 @@ func main() {
 		gnet.WithLogPath(server.LogPath),
 	}
 	log.Fatal(gnet.Run(server, server.ProtoAddr, opts...))
+}
+
+func registerSignalHandler(server *networking.Server) {
+	signalCh := make(chan os.Signal, 1)
+	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
+	go func() {
+		server.Shutdown = true
+	}()
 }
 
 func daemonize() {
@@ -81,16 +92,16 @@ func daemonize() {
 	os.Exit(0)
 }
 
-func initLog(logPath, level string) *os.File {
-	logFile, err := os.OpenFile(logPath, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
+func initLog(path, level string) *os.File {
+	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
 		slog.Error("can't open log file", "err", err)
 		os.Exit(1)
 	}
 
-	handler := slog.NewTextHandler(logFile, &slog.HandlerOptions{
+	handler := slog.NewTextHandler(file, &slog.HandlerOptions{
 		Level: common.ToSlogLevel(level),
 	})
 	slog.SetDefault(slog.New(handler))
-	return logFile
+	return file
 }
