@@ -41,7 +41,7 @@ import (
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/rio"
 	"github.com/sunminx/RDB/internal/sds"
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 type Aofer struct {
@@ -150,7 +150,7 @@ func (aof *Aofer) rewriteListObject(key string, val *obj.Robj) bool {
 	iter := list.NewIterator(val)
 	for iter.HasNext() {
 		if batch == 0 {
-			cmdEntries := util.Cond(entries < aofRewriteItemsPerCmd,
+			cmdEntries := Cond(entries < aofRewriteItemsPerCmd,
 				entries, aofRewriteItemsPerCmd)
 			if !aof.writeMultibulkCount(2+cmdEntries) ||
 				!aof.writeBulkString([]byte("RPUSH")) ||
@@ -177,7 +177,7 @@ func (aof *Aofer) rewriteHashObject(key string, val *obj.Robj) bool {
 	iter := hash.NewIterator(val)
 	for iter.HasNext() {
 		if batch == 0 {
-			cmdEntries := util.Cond(entries < aofRewriteItemsPerCmd,
+			cmdEntries := Cond(entries < aofRewriteItemsPerCmd,
 				entries, aofRewriteItemsPerCmd)
 			if !aof.writeMultibulkCount(2+cmdEntries*2) ||
 				!aof.writeBulkString([]byte("HMSET")) ||
@@ -213,7 +213,7 @@ func (aof *Aofer) writeBulkObject(robj *obj.Robj) bool {
 }
 
 func (aof *Aofer) writeBulkInt(n int64) bool {
-	bytes := util.Int64ToBytes(n)
+	bytes := Int64ToBytes(n)
 	aof.wr.Write([]byte{'$'})
 	aof.wr.Write(bytes)
 	aof.wr.Write([]byte("\r\n"))
@@ -245,7 +245,7 @@ func (aof *Aofer) writeMultibulkCount(c int64) bool {
 		slog.Warn("failed write multibulk count", "err", err)
 		return noRewrite
 	}
-	if _, err = aof.wr.Write(util.Int64ToBytes(c)); err != nil {
+	if _, err = aof.wr.Write(Int64ToBytes(c)); err != nil {
 		slog.Warn("failed write multibulk count", "err", err)
 		return noRewrite
 	}
@@ -651,7 +651,7 @@ func (am *aofManifest) nextBaseAofName(server *networking.Server) string {
 		am.histAofInfos = append(am.histAofInfos, am.baseAofInfo)
 	}
 	ai := newAofInfo()
-	formatSuffix := util.Cond(server.AofUseRdbPreamble, rdbFormatSuffix, aofFormatSuffix)
+	formatSuffix := Cond(server.AofUseRdbPreamble, rdbFormatSuffix, aofFormatSuffix)
 	am.currBaseFileSeq++
 	ai.name = fmt.Sprintf("%s.%d%s%s", server.AofFilename, am.currBaseFileSeq,
 		baseFileSuffix, formatSuffix)

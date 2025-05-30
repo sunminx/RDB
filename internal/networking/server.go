@@ -15,7 +15,7 @@ import (
 	"github.com/sunminx/RDB/internal/cmd"
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/debug"
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 var assert = debug.Assert
@@ -384,7 +384,7 @@ func (s *Server) cron() bool {
 			s.AofRewritePerc > 0 && s.AofCurrSize > s.AofRewriteMinSize {
 			// Calculate whether the growth rate of the current AOF file size
 			// after the last rewrite exceeds the threshold.
-			base := util.Cond(s.AofRewriteBaseSize > 0, s.AofRewriteBaseSize, 1)
+			base := Cond(s.AofRewriteBaseSize > 0, s.AofRewriteBaseSize, 1)
 			growth := (s.AofCurrSize*100)/base - 100
 			if growth >= s.AofRewritePerc {
 				slog.Info(fmt.Sprintf("starting automatic rewriting of AOF on %d%% growth\n", growth))
@@ -395,7 +395,7 @@ func (s *Server) cron() bool {
 	}
 
 	// After the db persistence is completed, move the key-val pair in sdbs[1] step by step to sdbs[0].
-	if util.TryLockWithTimeout(s.CmdLock, 20*time.Millisecond) {
+	if TryLockWithTimeout(s.CmdLock, 20*time.Millisecond) {
 		_ = s.DB.MergeIfNeeded(100 * time.Millisecond)
 		s.CmdLock.Unlock()
 	}

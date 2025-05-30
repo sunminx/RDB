@@ -11,7 +11,7 @@ import (
 
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/networking"
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 const (
@@ -71,7 +71,7 @@ func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
 	}
-	locked := util.TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
+	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
 	if !locked {
 		slog.Warn("exit bgsave RDB file because of db can't locked")
 		return nosave
@@ -147,7 +147,7 @@ func (d Dumper) RdbSaveBackgroundDoneHandler(server *networking.Server) {
 		default:
 		}
 	}
-	locked := util.TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
+	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
 	if !locked {
 		d.waitResetDBState = waiting
 		return
@@ -312,7 +312,7 @@ func (_ Dumper) AofRewriteBackground(server *networking.Server) bool {
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
 	}
-	locked := util.TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
+	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
 	if !locked {
 		slog.Warn("exit rewrite AOF file because of db can't locked")
 		return false
@@ -435,7 +435,7 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 		am.deleteAofHistFiles(server)
 	}
 
-	locked := util.TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
+	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
 	if !locked {
 		d.waitResetDBState = waiting
 		return

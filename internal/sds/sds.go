@@ -5,7 +5,7 @@ import (
 
 	"github.com/sunminx/RDB/internal/object"
 	obj "github.com/sunminx/RDB/internal/object"
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 type sds interface {
@@ -50,7 +50,7 @@ func Len(robj *obj.Robj) int64 {
 		return int64(unwrap(robj).Len())
 	}
 	if robj.CheckEncoding(obj.EncodingInt) {
-		return util.Digit10(uint64(unwrapInt(robj)))
+		return Digit10(uint64(unwrapInt(robj)))
 	}
 	return 0
 }

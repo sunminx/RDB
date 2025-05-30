@@ -5,7 +5,7 @@ import (
 	"io"
 	"os"
 
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 type Reader struct {
@@ -76,7 +76,7 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 	processBytes := w.processBytes
 	ln := len(p)
 	for ln > 0 {
-		chunk := util.Cond(w.maxProcessChunk < ln, w.maxProcessChunk, ln)
+		chunk := Cond(w.maxProcessChunk < ln, w.maxProcessChunk, ln)
 		if w.updateCksum {
 			w.updateCksumFn(w, p, chunk)
 		}

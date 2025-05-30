@@ -24,9 +24,9 @@ func main() {
 	conf.Load(server, configfile)
 
 	var logFile *os.File
+	subprocess := flag.Bool("subprocess", false, "flag subprocess")
+	flag.Parse()
 	if server.Daemonize {
-		subprocess := flag.Bool("subprocess", false, "flag subprocess")
-		flag.Parse()
 		// Determine whether it is a parent process or a child process
 		// through the subprocess startup flag.
 		if *subprocess == false {
@@ -38,13 +38,15 @@ func main() {
 		} else if server.LogPath != "" {
 			logFile = initLog(server.LogPath, server.LogLevel)
 			defer logFile.Close()
-		} else {
-			slog.Info(common.Logo(server.Version))
 		}
 	}
 
 	server.Init()
 	server.Dumper = dump.New()
+
+	if *subprocess == false {
+		slog.Info(common.Logo(server.Version))
+	}
 
 	registerSignalHandler(server)
 

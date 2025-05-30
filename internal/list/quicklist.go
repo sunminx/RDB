@@ -4,7 +4,7 @@ import (
 	"math"
 
 	ds "github.com/sunminx/RDB/internal/datastruct"
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 type Quicklist struct {
@@ -68,7 +68,7 @@ func (ql *Quicklist) ReplaceAtIndex(index int64, entry []byte) {
 
 	node := ql.head
 	for {
-		var step int64 = util.Cond(index > math.MaxInt16, math.MaxInt16, index)
+		var step int64 = Cond(index > math.MaxInt16, math.MaxInt16, index)
 		if int16(step) < node.cnt {
 			break
 		}
@@ -289,8 +289,8 @@ func (ql *Quicklist) remove(where int8, num, skipnum int64) [][]byte {
 	removeSlice := make([][]byte, 0)
 	for num > 0 {
 		var removes [][]byte
-		removenum = int16(util.Cond(num > math.MaxInt16, math.MaxInt16, num))
-		skipenum = int16(util.Cond(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
+		removenum = int16(Cond(num > math.MaxInt16, math.MaxInt16, num))
+		skipenum = int16(Cond(skipnum > math.MaxInt16, math.MaxInt16, skipnum))
 		if where == quicklistHead {
 			neighborNode = node.next
 			removes, skipednum, pass = node.zl.RemoveHead(removenum, skipenum)

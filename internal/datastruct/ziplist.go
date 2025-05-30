@@ -5,7 +5,7 @@ import (
 	"math"
 	"strconv"
 
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 // <zlbytes> <zltail> <zllen> <entry> <entry> ... <entry> <zlend>
@@ -150,7 +150,7 @@ func (zl *Ziplist) decodeEntryEncoding(offset int32) (strorint int8,
 	lensize, ln int32) {
 	// _type: first two bit of byte
 	_type := []byte(*zl)[offset] & zipStrMask
-	roffset := util.Cond(offset+5 > zl.Zlbytes(), zl.Zlbytes(), offset+5)
+	roffset := Cond(offset+5 > zl.Zlbytes(), zl.Zlbytes(), offset+5)
 	encoding := []byte(*zl)[offset:roffset]
 	if _type < zipStrMask { // string
 		strorint = strType
@@ -599,7 +599,7 @@ func (zl *Ziplist) offsetTailSkipN(n int16) int32 {
 }
 
 func (zl *Ziplist) removeAll(num int16) ([][]byte, bool) {
-	num = util.Cond(num > zl.Zllen(), zl.Zllen(), num)
+	num = Cond(num > zl.Zllen(), zl.Zllen(), num)
 	if num == zl.Zllen() {
 		entries := zl.getAllEntries()
 		return entries, true

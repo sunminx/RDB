@@ -19,7 +19,7 @@ import (
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/rio"
 	"github.com/sunminx/RDB/internal/sds"
-	"github.com/sunminx/RDB/pkg/util"
+	. "github.com/sunminx/RDB/pkg/util"
 )
 
 type Rdber struct {
@@ -109,7 +109,7 @@ func (rdb *Rdber) loadSelectDBNum() uint64 {
 func (rdb *Rdber) saveAuxFields() bool {
 	var saved bool = true
 	saved = saved && rdb.saveAuxFieldStrStr("redis-ver", "9")
-	saved = saved && rdb.saveAuxFieldStrInt("redis-bits", util.Cond(unsafe.Sizeof(uintptr(0)) == 4, int64(32), int64(64)))
+	saved = saved && rdb.saveAuxFieldStrInt("redis-bits", Cond(unsafe.Sizeof(uintptr(0)) == 4, int64(32), int64(64)))
 	saved = saved && rdb.saveAuxFieldStrInt("ctime", time.Now().Unix())
 	saved = saved && rdb.saveAuxFieldStrInt("used-mem", 0)
 	return saved
@@ -378,7 +378,7 @@ func (rdb *Rdber) saveStringObject(val *obj.Robj) bool {
 		n := val.Val().(int64)
 		enc := encodeInt(n)
 		if len(enc) == 0 {
-			enc = util.Int64ToBytes(n)
+			enc = Int64ToBytes(n)
 		}
 		return rdb.writeRaw(enc)
 	} else if val.CheckEncoding(obj.EncodingRaw) {
@@ -549,13 +549,13 @@ func (rdb *Rdber) saveLen(ln uint64) bool {
 func (rdb *Rdber) loadTime() int32 {
 	var t int32
 	err := binary.Read(rdb.rd, binary.LittleEndian, &t)
-	return util.Cond(err != nil, -1, t)
+	return Cond(err != nil, -1, t)
 }
 
 func (rdb *Rdber) loadMillisecondTime() int64 {
 	var t int64
 	err := binary.Read(rdb.rd, binary.LittleEndian, &t)
-	return util.Cond(err != nil, -1, t)
+	return Cond(err != nil, -1, t)
 }
 
 func (rdb *Rdber) saveMillisencondTime(t int64) bool {
@@ -568,7 +568,7 @@ func (rdb *Rdber) saveMillisencondTime(t int64) bool {
 
 func (rdb *Rdber) loadType() uint8 {
 	p := make([]byte, 1, 1)
-	return util.Cond(rdb.readRaw(p) != 1, 0, p[0])
+	return Cond(rdb.readRaw(p) != 1, 0, p[0])
 }
 
 func (rdb *Rdber) saveType(t uint8) bool {
