@@ -68,7 +68,7 @@ func registerSignalHandler(server *networking.Server) {
 	go func() {
 		<-signalCh
 		slog.Info("we received SIGINT or SIGTERM, and exit after finish tail-in work")
-		server.Shutdown = true
+		server.Shutdown.Store(true)
 	}()
 }
 

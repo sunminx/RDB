@@ -82,7 +82,7 @@ type Server struct {
 	AofLastIncrFsyncOffset int64
 	AofLastIncrSize        int64
 	LoadingLoadedBytes     int64
-	Shutdown               bool
+	Shutdown               atomic.Bool
 	ShutdownTimeout        int64
 	ShutdownStartTime      int64
 }
@@ -122,7 +122,7 @@ type Dumper interface {
 var rejectConnResp = []byte("connection refused.")
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
-	if s.Shutdown {
+	if s.Shutdown.Load() {
 		conn.Write(rejectConnResp)
 		return nil, gnet.Close
 	}
@@ -197,7 +197,7 @@ func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 		}
 	}
 
-	if s.Shutdown || (cli.flag&closeASAP) != 0 {
+	if s.Shutdown.Load() || (cli.flag&closeASAP) != 0 {
 		return gnet.Close
 	}
 
@@ -206,7 +206,6 @@ func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 		cli.reply = make([]byte, 0)
 	}
 	cli.state = idleState
-	fmt.Println(">>>>>>>>>>>> cli.state ", cli.state)
 
 	if (cli.flag & closeAfterReply) != 0 {
 		return gnet.Close
@@ -337,7 +336,7 @@ func (s *Server) cron() bool {
 	s.clientsCron()
 
 	// Shutting down in a safe way when we received SIGTERM or SIGINT.
-	if s.Shutdown && !s.isShutdownInited() {
+	if s.Shutdown.Load() && !s.isShutdownInited() {
 		slog.Info("the shutdown is started", "startTime", s.UnixTime)
 		if s.prepareForShutdown() {
 			return true
@@ -566,7 +565,6 @@ func (s *Server) finishShutdown() bool {
 func (s *Server) isAllClientFreed() bool {
 	for _, cli := range s.Clients {
 		if cli.fd != -1 {
-			fmt.Println(">>>>>>>>>>>>>>>>>>>>>> fd ", cli.fd)
 			return false
 		}
 	}
