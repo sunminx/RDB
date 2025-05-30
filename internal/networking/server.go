@@ -23,7 +23,6 @@ var assert = debug.Assert
 type Server struct {
 	gnet.BuiltinEventEngine
 	Dumper
-	eng                    gnet.Engine
 	Ctx                    context.Context
 	CancelFunc             context.CancelFunc
 	CancelCalled           bool
@@ -120,13 +119,14 @@ type Dumper interface {
 	FlushAofManifest(*Server) error
 }
 
-func (s *Server) OnBoot(eng gnet.Engine) gnet.Action {
-	slog.Info("set gnet engine to server")
-	s.eng = eng
-	return gnet.None
-}
+var rejectConnResp = []byte("connection refused.")
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
+	if s.Shutdown {
+		conn.Write(rejectConnResp)
+		return nil, gnet.Close
+	}
+
 	fd := conn.Fd()
 	if s.MaxFd <= fd {
 		s.MaxFd = 2 * fd
@@ -145,7 +145,7 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 
 func (s *Server) OnClose(conn gnet.Conn, err error) (action gnet.Action) {
 	fd := conn.Fd()
-	if fd > s.MaxFd {
+	if fd < s.MaxFd {
 		s.Clients[fd] = nilClient()
 	}
 
@@ -159,12 +159,13 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 	if conn.Fd() > s.MaxFd {
 		return gnet.Close
 	}
-
 	return s.processTrafficEvent(conn)
 }
 
 func (s *Server) OnTick() (time.Duration, gnet.Action) {
-	s.cron()
+	if exit := s.cron(); exit {
+		return 0, gnet.Shutdown
+	}
 	return time.Duration(1000/s.Hz) * time.Millisecond, gnet.None
 }
 
@@ -179,6 +180,7 @@ func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 	if cli == nil || cli.fd == -1 {
 		return gnet.Close
 	}
+	cli.state = runnableState
 	cli.lastInteraction = time.Now().UnixMilli()
 
 	if cli.flag&queueCall == 0 {
@@ -195,7 +197,7 @@ func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 		}
 	}
 
-	if (cli.flag & closeASAP) != 0 {
+	if s.Shutdown || (cli.flag&closeASAP) != 0 {
 		return gnet.Close
 	}
 
@@ -203,6 +205,8 @@ func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 		conn.Write(cli.reply)
 		cli.reply = make([]byte, 0)
 	}
+	cli.state = idleState
+	fmt.Println(">>>>>>>>>>>> cli.state ", cli.state)
 
 	if (cli.flag & closeAfterReply) != 0 {
 		return gnet.Close
@@ -326,7 +330,7 @@ const (
 	DoneAofBgsave uint8 = 2
 )
 
-func (s *Server) cron() {
+func (s *Server) cron() bool {
 	s.UnixTime = time.Now().UnixMilli()
 
 	s.databasesCron()
@@ -336,14 +340,14 @@ func (s *Server) cron() {
 	if s.Shutdown && !s.isShutdownInited() {
 		slog.Info("the shutdown is started", "startTime", s.UnixTime)
 		if s.prepareForShutdown() {
-			os.Exit(0)
+			return true
 		}
 	} else if s.isShutdownInited() {
 		if s.UnixTime-s.ShutdownStartTime > s.ShutdownTimeout ||
 			s.isReadyShutdown() {
 			slog.Info("call to finish shutdown func")
 			if s.finishShutdown() {
-				os.Exit(0)
+				return true
 			} else {
 				slog.Info("there are some work don't ready, so we try to later")
 			}
@@ -400,7 +404,7 @@ func (s *Server) cron() {
 	if s.AofState != AofOff {
 		s.flushAppendOnlyFile(false)
 	}
-
+	return false
 }
 
 const (
@@ -496,8 +500,12 @@ var errWaitBeforeDoFinishShutdown = errors.New("waiting for replicas before shut
 // 2. stop Event_loop
 func (s *Server) prepareForShutdown() bool {
 	s.ShutdownStartTime = s.UnixTime
-	slog.Info("send shutdown signal to gnet engine")
-	go s.eng.Stop(context.TODO())
+
+	for _, cli := range s.Clients {
+		if cli.fd != -1 && cli.state == idleState {
+			cli.fd = -1
+		}
+	}
 	return false
 }
 
@@ -510,8 +518,8 @@ func (s *Server) prepareForShutdown() bool {
 // 6. Update AOF manifest file.
 // 7. Flush all slaves Output buffer.
 func (s *Server) finishShutdown() bool {
-	if s.NetLoopState != netLoopStoped {
-		slog.Warn("net events loop has't stoped in finish shutdown stage")
+	if !s.isAllClientFreed() {
+		slog.Warn("there are still active clients, so try to finish shutdown later")
 		return false
 	}
 
@@ -549,6 +557,16 @@ func (s *Server) finishShutdown() bool {
 		slog.Info("flush AOF manifest file before exiting")
 		if err := s.Dumper.FlushAofManifest(s); err != nil {
 			slog.Error("error flush AOF manifest file", "err", err)
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Server) isAllClientFreed() bool {
+	for _, cli := range s.Clients {
+		if cli.fd != -1 {
+			fmt.Println(">>>>>>>>>>>>>>>>>>>>>> fd ", cli.fd)
 			return false
 		}
 	}

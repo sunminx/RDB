@@ -39,6 +39,11 @@ const (
 	reqInline
 )
 
+const (
+	idleState = iota
+	runnableState
+)
+
 type Client struct {
 	gnet.Conn
 	*db.DB
@@ -58,6 +63,7 @@ type Client struct {
 	reply           []byte
 	lastInteraction int64
 	cmdLock         *sync.RWMutex
+	state           int
 }
 
 type multiState struct {
@@ -95,6 +101,7 @@ func NewClient(conn gnet.Conn, db *db.DB) *Client {
 		argv:          make([][]byte, 0),
 		reply:         make([]byte, 0),
 		authenticated: true,
+		state:         idleState,
 	}
 }
 

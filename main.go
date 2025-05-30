@@ -58,7 +58,8 @@ func main() {
 		gnet.WithLogLevel(common.ToGnetLevel(server.LogLevel)),
 		gnet.WithLogPath(server.LogPath),
 	}
-	gnet.Run(server, server.ProtoAddr, opts...)
+	_ = gnet.Run(server, server.ProtoAddr, opts...)
+	slog.Info("Bye bye ...")
 }
 
 func registerSignalHandler(server *networking.Server) {
