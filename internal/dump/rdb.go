@@ -2,6 +2,7 @@ package dump
 
 import (
 	"bytes"
+	"context"
 	"encoding/binary"
 	"errors"
 	"fmt"
@@ -49,7 +50,7 @@ func newRdbSaver(file *os.File, mode byte, db *db.DB, rdberInfo rdberInfo) (*Rdb
 	return nil, errors.New("invalide mode")
 }
 
-func (rdb *Rdber) save() error {
+func (rdb *Rdber) save(ctx context.Context) error {
 	if !rdb.writeRaw([]byte(fmt.Sprintf("REDIS%04d", rdb.info.version))) {
 		return errors.New("write rdb version error")
 	}
@@ -62,8 +63,14 @@ func (rdb *Rdber) save() error {
 	}
 
 	for e := range rdb.db.Iterator() {
-		if !rdb.saveKeyValPair(e.Key, e.Val, e.Expire) {
-			return errors.New("save key-val pair error")
+		select {
+		case <-ctx.Done():
+			return errContextCanceled
+		default:
+			saved := rdb.saveKeyValPair(e.Key, e.Val, e.Expire)
+			if !saved {
+				return errors.New("save key-val pair error")
+			}
 		}
 	}
 

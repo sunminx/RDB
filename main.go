@@ -2,7 +2,6 @@ package main
 
 import (
 	"flag"
-	"log"
 	"log/slog"
 	"os"
 	"os/exec"
@@ -24,6 +23,7 @@ func main() {
 	server := networking.NewServer()
 	conf.Load(server, configfile)
 
+	var logFile *os.File
 	if server.Daemonize {
 		subprocess := flag.Bool("subprocess", false, "flag subprocess")
 		flag.Parse()
@@ -35,6 +35,11 @@ func main() {
 				os.Exit(1)
 			}
 			daemonize()
+		} else if server.LogPath != "" {
+			logFile = initLog(server.LogPath, server.LogLevel)
+			defer logFile.Close()
+		} else {
+			slog.Info(common.Logo(server.Version))
 		}
 	}
 
@@ -42,14 +47,6 @@ func main() {
 	server.Dumper = dump.New()
 
 	registerSignalHandler(server)
-
-	var logFile *os.File
-	if server.LogPath != "" {
-		logFile = initLog(server.LogPath, server.LogLevel)
-		defer logFile.Close()
-	} else {
-		slog.Info(common.Logo(server.Version))
-	}
 
 	server.LoadDataFromDisk()
 	server.OpenAofFileIfNeeded()
@@ -61,13 +58,15 @@ func main() {
 		gnet.WithLogLevel(common.ToGnetLevel(server.LogLevel)),
 		gnet.WithLogPath(server.LogPath),
 	}
-	log.Fatal(gnet.Run(server, server.ProtoAddr, opts...))
+	gnet.Run(server, server.ProtoAddr, opts...)
 }
 
 func registerSignalHandler(server *networking.Server) {
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
 	go func() {
+		<-signalCh
+		slog.Info("we received SIGINT or SIGTERM, and exit after finish tail-in work")
 		server.Shutdown = true
 	}()
 }

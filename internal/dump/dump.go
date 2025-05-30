@@ -1,6 +1,8 @@
 package dump
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -34,6 +36,8 @@ func New() Dumper {
 	return Dumper{waitResetDBState: notWait}
 }
 
+var errContextCanceled = errors.New("quit because of cancel signal")
+
 // RDB active child save type.
 const (
 	rdbChildTypeNone   = 0
@@ -62,7 +66,7 @@ func (_ Dumper) RdbLoad(server *networking.Server) bool {
 	return true
 }
 
-func (_ Dumper) RdbSaveBackground(server *networking.Server) bool {
+func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 	if !server.RdbChildRunning.CompareAndSwap(
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
@@ -75,7 +79,7 @@ func (_ Dumper) RdbSaveBackground(server *networking.Server) bool {
 	server.DB.SetState(db.InPersistState)
 	server.CmdLock.Unlock()
 	now := time.Now()
-	go rdbSave(server)
+	go d.RdbSave(server)
 	slog.Info("background saving started")
 	server.DirtyBeforeBgsave = server.Dirty
 	server.RdbSaveTimeStart = now.UnixMilli()
@@ -87,7 +91,7 @@ type rdberInfo struct {
 	version int
 }
 
-func rdbSave(server *networking.Server) bool {
+func (_ Dumper) RdbSave(server *networking.Server) bool {
 	filename := server.RdbFilename
 	tempfile := fmt.Sprintf("temp-%d.rdb", os.Getgid())
 	file, err := os.Create(tempfile)
@@ -103,7 +107,8 @@ func rdbSave(server *networking.Server) bool {
 		slog.Warn("can't create rdber for save", "err", err)
 		return nosave
 	}
-	if err = rdber.save(); err != nil {
+	ctx, _ := context.WithCancel(server.Ctx)
+	if err = rdber.save(ctx); err != nil {
 		slog.Warn("failed save db by rdber", "err", err)
 		return nosave
 	}
@@ -330,13 +335,14 @@ func aofRewrite(filepath string, server *networking.Server) bool {
 	}
 	defer file.Close()
 
+	ctx, _ := context.WithCancel(server.Ctx)
 	if server.AofUseRdbPreamble {
 		rdber, err := newRdbSaver(file, 'w', server.DB, newRdberInfo(server))
 		if err != nil {
 			slog.Warn("cannot create rdber for saving")
 			return false
 		}
-		if err = rdber.save(); err != nil {
+		if err = rdber.save(ctx); err != nil {
 			slog.Warn("failed save db by rdber", "err", err)
 			return false
 		}
@@ -346,7 +352,7 @@ func aofRewrite(filepath string, server *networking.Server) bool {
 			slog.Warn("failed init aofer", "err", err)
 			return false
 		}
-		if err := aofer.rewrite(0); err != nil {
+		if err := aofer.rewrite(ctx, 0); err != nil {
 			slog.Warn("failed rewrite aof", "err", err)
 			return false
 		}
@@ -491,4 +497,25 @@ func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
 		slog.Error("can't write AOF manifest file on server start", "err", err)
 		os.Exit(1)
 	}
+}
+
+func (_ Dumper) FlushAofManifest(server *networking.Server) error {
+	filename := aofManifestFilename(server.AofFilename)
+	filepath := makePath(server.AofDirname, filename)
+	file, err := os.Open(filepath)
+	if err != nil {
+		return errors.Join(err, errors.New("can't open aofManifest file"))
+	}
+	defer file.Close()
+
+	am, err := createAofManifest(file)
+	if err != nil {
+		return errors.Join(err, errors.New("can't load aofManifest file"))
+	}
+	if len(am.incrAofInfos) == 0 {
+		return nil
+	}
+	ai := am.incrAofInfos[len(am.incrAofInfos)-1]
+	ai.endOffset = server.MasterReplOffset
+	return am.persist(server)
 }

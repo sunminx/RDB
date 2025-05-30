@@ -23,6 +23,7 @@ package dump
 
 import (
 	"bufio"
+	"context"
 	"errors"
 	"fmt"
 	"io"
@@ -85,9 +86,14 @@ func (aof *Aofer) closeFile() {
 	}
 }
 
-func (aof *Aofer) rewrite(timestamp int64) error {
+func (aof *Aofer) rewrite(ctx context.Context, timestamp int64) error {
 	var err error
 	for e := range aof.db.Iterator() {
+		select {
+		case <-ctx.Done():
+			return errContextCanceled
+		default:
+		}
 		switch e.Val.Type() {
 		case obj.TypeString:
 			if !aof.rewriteStringObject(e.Key, e.Val) {

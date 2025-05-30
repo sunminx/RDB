@@ -1,6 +1,7 @@
 *.swp
 *.rdb
 *.log
+temp*
 appendonly.*
 .vscode/
 RDB

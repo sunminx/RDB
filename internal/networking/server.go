@@ -1,6 +1,8 @@
 package networking
 
 import (
+	"context"
+	"errors"
 	"fmt"
 	"log/slog"
 	"os"
@@ -21,6 +23,10 @@ var assert = debug.Assert
 type Server struct {
 	gnet.BuiltinEventEngine
 	Dumper
+	eng                    gnet.Engine
+	Ctx                    context.Context
+	CancelFunc             context.CancelFunc
+	CancelCalled           bool
 	Daemonize              bool
 	MaxIdleTime            int64
 	TcpKeepalive           int
@@ -30,6 +36,7 @@ type Server struct {
 	Port                   int
 	ProtoAddr              string
 	MaxFd                  int
+	NetLoopState           int
 	Clients                []*Client
 	cmds                   []cmd.Command
 	Requirepass            bool
@@ -39,6 +46,7 @@ type Server struct {
 	LogLevel               string
 	LogPath                string
 	Version                string
+	MasterReplOffset       int64
 	RunnableClientCh       chan *Client
 	CmdLock                *sync.RWMutex
 	UnlockNotice           chan struct{}
@@ -76,7 +84,13 @@ type Server struct {
 	AofLastIncrSize        int64
 	LoadingLoadedBytes     int64
 	Shutdown               bool
+	ShutdownTimeout        int64
+	ShutdownStartTime      int64
 }
+
+const (
+	netLoopStoped = iota + 1
+)
 
 const (
 	AofOff         = 0
@@ -96,12 +110,20 @@ type SaveParam struct {
 
 type Dumper interface {
 	RdbLoad(*Server) bool
+	RdbSave(*Server) bool
 	RdbSaveBackground(*Server) bool
 	RdbSaveBackgroundDoneHandler(*Server)
 	AofLoad(*Server) bool
 	AofRewriteBackground(*Server) bool
 	AofRewriteBackgroundDoneHandler(*Server)
 	AofOpenOnServerStart(*Server)
+	FlushAofManifest(*Server) error
+}
+
+func (s *Server) OnBoot(eng gnet.Engine) gnet.Action {
+	slog.Info("set gnet engine to server")
+	s.eng = eng
+	return gnet.None
 }
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
@@ -144,6 +166,10 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 func (s *Server) OnTick() (time.Duration, gnet.Action) {
 	s.cron()
 	return time.Duration(1000/s.Hz) * time.Millisecond, gnet.None
+}
+
+func (s *Server) OnShutdown(_ gnet.Engine) {
+	s.NetLoopState = netLoopStoped
 }
 
 var protoIOBufLen = 1024 * 16
@@ -202,7 +228,10 @@ const defAofBufCapacity = 1024 * 1024 * 10
 
 func NewServer() *Server {
 	start := time.Now()
+	ctx, cancelFunc := context.WithCancel(context.Background())
 	return &Server{
+		Ctx:           ctx,
+		CancelFunc:    cancelFunc,
 		Daemonize:     false,
 		MaxIdleTime:   0,
 		TcpKeepalive:  300,
@@ -298,11 +327,28 @@ const (
 )
 
 func (s *Server) cron() {
-	now := time.Now()
-	s.UnixTime = now.UnixMilli()
+	s.UnixTime = time.Now().UnixMilli()
 
 	s.databasesCron()
 	s.clientsCron()
+
+	// Shutting down in a safe way when we received SIGTERM or SIGINT.
+	if s.Shutdown && !s.isShutdownInited() {
+		slog.Info("the shutdown is started", "startTime", s.UnixTime)
+		if s.prepareForShutdown() {
+			os.Exit(0)
+		}
+	} else if s.isShutdownInited() {
+		if s.UnixTime-s.ShutdownStartTime > s.ShutdownTimeout ||
+			s.isReadyShutdown() {
+			slog.Info("call to finish shutdown func")
+			if s.finishShutdown() {
+				os.Exit(0)
+			} else {
+				slog.Info("there are some work don't ready, so we try to later")
+			}
+		}
+	}
 
 	// Check if a background saving or AOF rewrite in progress terminated.
 	if s.isBgsaveOrAofRewriteRunning() {
@@ -444,8 +490,85 @@ func (s *Server) delClient(fd int) {
 	s.Clients = append(s.Clients[:fd], s.Clients[fd+1:]...)
 }
 
-func (s *Server) doAfterShutdown() {
-	os.Exit(0)
+var errWaitBeforeDoFinishShutdown = errors.New("waiting for replicas before shutting down")
+
+// 1. send GET ACK command to all replicas for get ack offset (repl_ack_off).
+// 2. stop Event_loop
+func (s *Server) prepareForShutdown() bool {
+	s.ShutdownStartTime = s.UnixTime
+	slog.Info("send shutdown signal to gnet engine")
+	go s.eng.Stop(context.TODO())
+	return false
+}
+
+// The work that needs to be completed before the server exit.
+// 1. Check and Log ack offset of all replicas.
+// 2. Kill child process for RDB bgsave if it's exists.
+// 3. Kill child process for AOF rewrite if it's exists.
+// 4. Flush AOF file if needed.
+// 5. Create a new RDB file before exiting.
+// 6. Update AOF manifest file.
+// 7. Flush all slaves Output buffer.
+func (s *Server) finishShutdown() bool {
+	if s.NetLoopState != netLoopStoped {
+		slog.Warn("net events loop has't stoped in finish shutdown stage")
+		return false
+	}
+
+	if !s.CancelCalled && s.RdbChildRunning.Load() {
+		s.killPersistingChildRoutine()
+		slog.Info("a RDB bgsave child routine had been canceled")
+	}
+
+	if !s.CancelCalled && s.AofChildRunning.Load() {
+		s.killPersistingChildRoutine()
+		slog.Info("a AOF rewrite child routine had been canceled")
+	}
+
+	if s.CancelCalled && (s.RdbChildRunning.Load() || s.AofChildRunning.Load()) {
+		slog.Info("wait RDB save or AOF rewrite child routine exit")
+		return false
+	}
+
+	if s.AofState != AofOff {
+		slog.Info("call to flush AOF file before exiting")
+		s.flushAppendOnlyFile(true)
+	}
+
+	if s.SaveParams != nil && len(s.SaveParams) > 0 {
+		slog.Info("save a new RDB file before exiting")
+		// Before reaching this point, there are no client requests and
+		// no async persisting.
+		if !s.Dumper.RdbSave(s) {
+			slog.Error("error save RDB file")
+			return false
+		}
+	}
+
+	if s.AofState != AofOff {
+		slog.Info("flush AOF manifest file before exiting")
+		if err := s.Dumper.FlushAofManifest(s); err != nil {
+			slog.Error("error flush AOF manifest file", "err", err)
+			return false
+		}
+	}
+	return true
+}
+
+func (s *Server) killPersistingChildRoutine() {
+	if s.CancelFunc != nil {
+		s.CancelFunc()
+		s.CancelFunc = nil
+		s.CancelCalled = true
+	}
+}
+
+func (s *Server) isShutdownInited() bool {
+	return s.ShutdownStartTime != 0
+}
+
+func (s *Server) isReadyShutdown() bool {
+	return s.NetLoopState == netLoopStoped
 }
 
 func (s *Server) isBgsaveOrAofRewriteRunning() bool {

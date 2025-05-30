@@ -134,6 +134,13 @@ func Load(server *networking.Server, filename string) {
 						server.AofRewriteMinSize = 1024 * 1024 * 1024 * v
 					}
 				}
+			case argv[0] == "shutdown-timeout" && len(argv) == 2:
+				n, err := strconv.ParseInt(argv[1], 10, 64)
+				if err != nil {
+					slog.Warn("invalid value for shutdown-timeout")
+				} else {
+					server.ShutdownTimeout = n * 1000
+				}
 			default:
 			}
 		}
