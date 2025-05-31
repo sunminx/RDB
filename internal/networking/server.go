@@ -164,7 +164,7 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 
 func (s *Server) OnTick() (time.Duration, gnet.Action) {
 	if exit := s.cron(); exit {
-		return 0, gnet.Shutdown
+		return time.Second, gnet.Shutdown
 	}
 	return time.Duration(1000/s.Hz) * time.Millisecond, gnet.None
 }
@@ -233,29 +233,30 @@ func NewServer() *Server {
 	start := time.Now()
 	ctx, cancelFunc := context.WithCancel(context.Background())
 	return &Server{
-		Ctx:           ctx,
-		CancelFunc:    cancelFunc,
-		Daemonize:     false,
-		MaxIdleTime:   0,
-		TcpKeepalive:  300,
-		ProtectedMode: false,
-		TcpBacklog:    512,
-		Ip:            "0.0.0.0",
-		Port:          6379,
-		ProtoAddr:     fmt.Sprintf("tcp://%s:%d", "0.0.0.0", 6379),
-		DB:            db.New(),
-		MaxFd:         defMaxFd,
-		Clients:       initClients(defMaxFd),
-		CronLoops:     0,
-		Hz:            100,
-		LogLevel:      "notice",
-		LogPath:       "",
-		Version:       "0.0.1",
-		RdbVersion:    9,
-		LastSave:      start.UnixMilli(),
-		RdbFilename:   "dump.rdb",
-		AofState:      AofOff,
-		AofBuf:        make([]byte, 0, defAofBufCapacity),
+		Ctx:                ctx,
+		CancelFunc:         cancelFunc,
+		Daemonize:          false,
+		MaxIdleTime:        0,
+		TcpKeepalive:       300,
+		ProtectedMode:      false,
+		TcpBacklog:         512,
+		Ip:                 "0.0.0.0",
+		Port:               6379,
+		ProtoAddr:          fmt.Sprintf("tcp://%s:%d", "0.0.0.0", 6379),
+		DB:                 db.New(),
+		MaxFd:              defMaxFd,
+		Clients:            initClients(defMaxFd),
+		CronLoops:          0,
+		Hz:                 100,
+		LogLevel:           "notice",
+		LogPath:            "",
+		Version:            "0.0.1",
+		RdbVersion:         9,
+		LastSave:           start.UnixMilli(),
+		RdbFilename:        "dump.rdb",
+		AofState:           AofOff,
+		AofBuf:             make([]byte, 0, defAofBufCapacity),
+		AofLastWriteStatus: aofWriteOk,
 	}
 }
 
@@ -344,11 +345,10 @@ func (s *Server) cron() bool {
 	} else if s.isShutdownInited() {
 		if s.UnixTime-s.ShutdownStartTime > s.ShutdownTimeout ||
 			s.isReadyShutdown() {
-			slog.Info("call to finish shutdown func")
+			slog.Info("start do the work before shutdown")
 			if s.finishShutdown() {
+				slog.Info("the work before shutdown is completed")
 				return true
-			} else {
-				slog.Info("there are some work don't ready, so we try to later")
 			}
 		}
 	}
@@ -427,6 +427,7 @@ func (s *Server) flushAppendOnlyFile(force bool) {
 						"when the AOF fsync policy is 'always'. Exiting...")
 					os.Exit(1)
 				}
+				slog.Warn("flush aof file failed", "err", err)
 				s.AofLastWriteStatus = aofWriteErr
 			}
 		} else {
@@ -538,12 +539,12 @@ func (s *Server) finishShutdown() bool {
 	}
 
 	if s.AofState != AofOff {
-		slog.Info("call to flush AOF file before exiting")
+		slog.Info("flush forcely AOF file")
 		s.flushAppendOnlyFile(true)
 	}
 
 	if s.SaveParams != nil && len(s.SaveParams) > 0 {
-		slog.Info("save a new RDB file before exiting")
+		slog.Info("save a new RDB file")
 		// Before reaching this point, there are no client requests and
 		// no async persisting.
 		if !s.Dumper.RdbSave(s) {
@@ -553,7 +554,7 @@ func (s *Server) finishShutdown() bool {
 	}
 
 	if s.AofState != AofOff {
-		slog.Info("flush AOF manifest file before exiting")
+		slog.Info("flush AOF manifest file")
 		if err := s.Dumper.FlushAofManifest(s); err != nil {
 			slog.Error("error flush AOF manifest file", "err", err)
 			return false
