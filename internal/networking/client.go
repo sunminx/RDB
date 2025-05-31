@@ -377,10 +377,12 @@ func (c *Client) processCommand() bool {
 		}
 		c.AddReplyErrorFormat(`unknown command %q, with args beginning with: %s`,
 			name, args)
-		goto clean
+		c.argc = 0
+		return execed
 	} else if (command.Arity > 0 && command.Arity != c.argc) || (c.argc < -command.Arity) {
 		c.AddReplyErrorFormat(`wrong number of arguments for %q command`, name)
-		goto clean
+		c.argc = 0
+		return execed
 	}
 
 	c.cmd = command
@@ -394,7 +396,6 @@ func (c *Client) processCommand() bool {
 		}
 	}
 
-clean:
 	c.argc = 0
 	return execed
 }
