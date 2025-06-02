@@ -97,7 +97,7 @@ func LIndexCommand(cli client) bool {
 		return ERR
 	}
 
-	idx, err := strconv.ParseInt(string(argv[2]), 10, 64)
+	idx, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
@@ -122,7 +122,7 @@ func LLenCommand(cli client) bool {
 		return ERR
 	}
 	llen := list.Cnt(val)
-	cli.AddReplyInt64(llen)
+	cli.AddReplyUint64(llen)
 	return OK
 }
 
@@ -136,15 +136,15 @@ func LTrimCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
+
 	argv := cli.Argv()
-	var start, end int64
-	var err error
-	start, err = strconv.ParseInt(string(argv[2]), 10, 64)
+
+	start, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
 	}
-	end, err = strconv.ParseInt(string(argv[3]), 10, 64)
+	end, err := strconv.ParseUint(string(argv[3]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR
@@ -164,8 +164,10 @@ func LSetCommand(cli client) bool {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
 	}
+
 	argv := cli.Argv()
-	index, err := strconv.ParseInt(string(argv[2]), 10, 64)
+
+	index, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyError(common.Shared["invalidindex"])
 		return ERR

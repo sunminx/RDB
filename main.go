@@ -23,30 +23,32 @@ func main() {
 	server := networking.NewServer()
 	conf.Load(server, configfile)
 
-	var logFile *os.File
 	subprocess := flag.Bool("subprocess", false, "flag subprocess")
 	flag.Parse()
-	if server.Daemonize {
-		// Determine whether it is a parent process or a child process
-		// through the subprocess startup flag.
-		if *subprocess == false {
-			if server.LogPath == "" {
-				slog.Info("the logfile configuration is necessary in daemonize mode")
-				os.Exit(1)
-			}
-			daemonize()
-		} else if server.LogPath != "" {
-			logFile = initLog(server.LogPath, server.LogLevel)
-			defer logFile.Close()
+	// Determine whether it is a parent process or a child process
+	// through the subprocess startup flag.
+	if server.Daemonize && *subprocess == false {
+		if server.LogPath == "" {
+			slog.Info("the logfile configuration is necessary in daemonize mode")
+			os.Exit(1)
 		}
+		daemonize()
+	}
+
+	var logFile *os.File
+	if *subprocess && server.LogPath != "" {
+		var err error
+		logFile, err = initLog(server.LogPath, server.LogLevel)
+		if err != nil {
+			panic("can't init logger, err=" + err.Error())
+		}
+		defer logFile.Close()
+	} else {
+		slog.Info(common.Logo(server.Version))
 	}
 
 	server.Init()
 	server.Dumper = dump.New()
-
-	if *subprocess == false {
-		slog.Info(common.Logo(server.Version))
-	}
 
 	registerSignalHandler(server)
 
@@ -94,16 +96,15 @@ func daemonize() {
 	os.Exit(0)
 }
 
-func initLog(path, level string) *os.File {
+func initLog(path, level string) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
-		slog.Error("can't open log file", "err", err)
-		os.Exit(1)
+		return nil, err
 	}
 
 	handler := slog.NewTextHandler(file, &slog.HandlerOptions{
 		Level: common.ToSlogLevel(level),
 	})
 	slog.SetDefault(slog.New(handler))
-	return file
+	return file, nil
 }

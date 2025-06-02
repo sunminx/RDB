@@ -42,7 +42,7 @@ func PushLeft(robj *obj.Robj, entry []byte) {
 	return
 }
 
-func Set(robj *obj.Robj, idx int64, entry []byte) {
+func Set(robj *obj.Robj, idx uint64, entry []byte) {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).ReplaceAtIndex(idx, entry)
 	}
@@ -63,28 +63,28 @@ func PopLeft(robj *obj.Robj) [][]byte {
 	return nil
 }
 
-func Index(robj *obj.Robj, idx int64) ([]byte, bool) {
+func Index(robj *obj.Robj, idx uint64) ([]byte, bool) {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		return unwrap(robj).Index(idx)
 	}
 	return nil, false
 }
 
-func Cnt(robj *obj.Robj) int64 {
+func Cnt(robj *obj.Robj) uint64 {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		return unwrap(robj).Cnt()
 	}
 	return 0
 }
 
-func Range(robj *obj.Robj, start, end int64) [][]byte {
+func Range(robj *obj.Robj, start, end uint64) [][]byte {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		return unwrap(robj).Range(start, end)
 	}
 	return nil
 }
 
-func Trim(robj *obj.Robj, start, end int64) {
+func Trim(robj *obj.Robj, start, end uint64) {
 	if robj.CheckEncoding(obj.EncodingQuicklist) {
 		unwrap(robj).Trim(start, end)
 	}

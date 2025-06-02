@@ -430,12 +430,12 @@ func (s *Server) flushAppendOnlyFile(force bool) {
 				slog.Warn("flush aof file failed", "err", err)
 				s.AofLastWriteStatus = aofWriteErr
 			}
-		} else {
-			if s.AofLastWriteStatus == aofWriteErr {
-				slog.Info("AOF write error looks solved, Redis can write again")
-				s.AofLastWriteStatus = aofWriteOk
-			}
 		}
+		if s.AofLastWriteStatus == aofWriteErr {
+			slog.Info("AOF write error looks solved, Redis can write again")
+			s.AofLastWriteStatus = aofWriteOk
+		}
+
 		s.AofCurrSize += int64(n)
 		s.AofLastIncrSize += int64(n)
 		s.AofBuf = s.AofBuf[n:]

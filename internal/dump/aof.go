@@ -150,8 +150,8 @@ func (aof *Aofer) rewriteListObject(key string, val *obj.Robj) bool {
 	iter := list.NewIterator(val)
 	for iter.HasNext() {
 		if batch == 0 {
-			cmdEntries := Cond(entries < aofRewriteItemsPerCmd,
-				entries, aofRewriteItemsPerCmd)
+			cmdEntries := int64(Cond(entries < aofRewriteItemsPerCmd,
+				entries, aofRewriteItemsPerCmd))
 			if !aof.writeMultibulkCount(2+cmdEntries) ||
 				!aof.writeBulkString([]byte("RPUSH")) ||
 				!aof.writeBulkString([]byte(key)) {

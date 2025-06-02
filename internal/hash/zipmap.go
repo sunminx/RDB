@@ -65,15 +65,15 @@ func (zp *Zipmap) exists(field []byte) bool {
 	return idx < zp.Zllen()
 }
 
-func (zp *Zipmap) Len() int16 {
+func (zp *Zipmap) Len() uint16 {
 	return zp.hlen()
 }
 
-func (zp *Zipmap) hlen() int16 {
+func (zp *Zipmap) hlen() uint16 {
 	return zp.Zllen() / 2
 }
 
-func (zp *Zipmap) find(field []byte) (int16, int32) {
+func (zp *Zipmap) find(field []byte) (uint16, uint32) {
 	iter := ds.NewZiplistIterator(zp.Ziplist)
 	for iter.HasNext() {
 		entry := iter.Next()

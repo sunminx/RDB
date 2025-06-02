@@ -544,6 +544,17 @@ func (c *Client) AddReplyInt64(n int64) {
 	}
 }
 
+func (c *Client) AddReplyUint64(n uint64) {
+	if n == 0 {
+		c.AddReplyRaw(common.Shared["czero"])
+	} else if n == 1 {
+		c.AddReplyRaw(common.Shared["cone"])
+	} else {
+		s := ":" + strconv.FormatUint(n, 10) + "\r\n"
+		c.AddReplyRaw([]byte(s))
+	}
+}
+
 // AddReplyBulk output bulk strings to client. bulk strings represents a single binary
 // string. The string can be of any size. eg: "$6\r\nfoobar\r\n".
 func (c *Client) AddReplyBulk(robj *obj.Robj) {

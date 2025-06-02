@@ -30,6 +30,7 @@ type client interface {
 	AddReplyError([]byte)
 	AddReplyErrorFormat(string, ...any)
 	AddReplyInt64(int64)
+	AddReplyUint64(uint64)
 	AddReplyBulk(*obj.Robj)
 	AddReplyMultibulk([]*obj.Robj)
 }
