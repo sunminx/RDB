@@ -319,22 +319,18 @@ func (zl *Ziplist) PrevLen(offset uint32) uint32 {
 }
 
 func (zl *Ziplist) ReplaceAtIndex(index uint16, entry []byte) {
-	if index < 0 {
-		index = 0
-	}
+	index = Cond(index < 0, 0, index)
 	n := zl.Len()
-	if index >= n {
-		index = n - 1
-	}
+	index = Cond(index >= n, n-1, index)
 	offset := zl.offsetHeadSkipN(index)
-	prevlen := zl.PrevLen(offset)
-	encoded := zl.EncodeEntry(prevlen, entry)
-	encodedlen := uint32(len(encoded))
-	oldencodedlen := zl.entryLen(offset)
-	if encodedlen > oldencodedlen {
-		zl.expand(offset, encodedlen-oldencodedlen)
-	} else if encodedlen < oldencodedlen {
-		zl.shrink(offset+(encodedlen-oldencodedlen), offset)
+	prevLen := zl.PrevLen(offset)
+	encoded := zl.EncodeEntry(prevLen, entry)
+	encodedLen := uint32(len(encoded))
+	oldEncodedLen := zl.entryLen(offset)
+	if encodedLen > oldEncodedLen {
+		zl.expand(offset, encodedLen-oldEncodedLen)
+	} else if encodedLen < oldEncodedLen {
+		zl.shrink(offset+(encodedLen-oldEncodedLen), offset)
 	}
 	zl.write(offset, encoded)
 }
@@ -350,41 +346,41 @@ func (zl *Ziplist) PushLeft(entry []byte) {
 }
 
 func (zl *Ziplist) insert(offset uint32, content []byte) {
-	var prevlen, nextdiff uint32
+	var prevLen, nextDiff uint32
 	bytes := zl.Bytes()
 	_len := zl.Len()
 
 	firstByte := ([]byte)(*zl)[offset]
 	if firstByte == ZiplistEnd && _len > 0 { // end
-		prevlen = zl.entryLen(zl.TailOffset())
+		prevLen = zl.entryLen(zl.TailOffset())
 		zl.SetTailOffset(offset)
 	}
 	// calculate the number of bytes required to insert the entry
-	// 1. prevlen
+	// 1. prevLen
 	// 2. encoding
 	// 3. len(entry)
 
-	// does the insert cause changes in the prevlen of next entry
+	// does the insert cause changes in the prevLen of next entry
 	// +4 or not
 
-	entry := zl.EncodeEntry(prevlen, content)
-	entrysize := uint32(len(entry))
+	entry := zl.EncodeEntry(prevLen, content)
+	entrySize := uint32(len(entry))
 	if firstByte != ZiplistEnd && _len > 0 { // header
-		if entrysize >= 254 {
-			nextdiff = 4
+		if entrySize >= 254 {
+			nextDiff = 4
 		}
-		zl.SetTailOffset(offset + entrysize)
+		zl.SetTailOffset(offset + entrySize)
 	}
-	zl.expand(offset, entrysize+nextdiff)
-	// store <prevlen><encoding><data> for entry
+	zl.expand(offset, entrySize+nextDiff)
+	// store <prevLen><encoding><data> for entry
 	zl.write(offset, entry)
-	// reset prevlen for next entry
-	if nextdiff > 0 {
-		zl.write(offset+entrysize, encodePrevLen(entrysize))
+	// reset prevLen for next entry
+	if nextDiff > 0 {
+		zl.write(offset+entrySize, encodePrevLen(entrySize))
 	} else if firstByte != ZiplistEnd && _len == 0 {
-		zl.write(offset+entrysize, []byte{byte(entrysize)})
+		zl.write(offset+entrySize, []byte{byte(entrySize)})
 	}
-	bytes += entrysize + nextdiff
+	bytes += entrySize + nextDiff
 	zl.write(bytes-1, []byte{ZiplistEnd})
 	zl.SetLen(_len + 1)
 	zl.SetBytes(bytes)
