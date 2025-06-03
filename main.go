@@ -55,7 +55,7 @@ func main() {
 	server.LoadDataFromDisk()
 	server.OpenAofFileIfNeeded()
 
-	var opts = []gnet.Option{
+	opts := []gnet.Option{
 		gnet.WithReusePort(true),
 		gnet.WithTicker(true),
 		gnet.WithLogger(rlog.New()),

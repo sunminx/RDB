@@ -361,8 +361,11 @@ func (ql *Quicklist) Index(idx uint64) ([]byte, bool) {
 	}
 	var entry []byte
 	iter := newQuicklistIterator(ql)
-	for idx >= 0 && iter.HasNext() {
+	for iter.HasNext() {
 		entry = iter.next()
+		if idx == 0 {
+			break
+		}
 		idx--
 	}
 	return entry, true

@@ -1,6 +1,8 @@
 package list
 
-import obj "github.com/sunminx/RDB/internal/object"
+import (
+	obj "github.com/sunminx/RDB/internal/object"
+)
 
 // list is merely a declaration reflecting which interfaces are provided.
 // do not attempt to reference it.
