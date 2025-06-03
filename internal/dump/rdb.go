@@ -429,7 +429,7 @@ func (rdb *Rdber) saveListObject(val *obj.Robj) bool {
 		node := ql.Head()
 		for node != nil {
 			li := node.List()
-			ln := li.Zlbytes()
+			ln := li.Bytes()
 			if !rdb.saveLen(uint64(ln)) {
 				return nosave
 			}
@@ -449,7 +449,7 @@ func (rdb *Rdber) saveHashObject(val *obj.Robj) bool {
 		if !rdb.saveLen(uint64(zm.Len())) {
 			return nosave
 		}
-		if !rdb.saveLen(uint64(zm.Zlbytes())) {
+		if !rdb.saveLen(uint64(zm.Bytes())) {
 			return nosave
 		}
 		return rdb.writeRaw([]byte(*zm.Ziplist))
