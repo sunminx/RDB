@@ -22,9 +22,10 @@ func (zp *Zipmap) deepcopy() *Zipmap {
 
 func (zp *Zipmap) set(field, val []byte) {
 	var update bool
-	if zp.Zllen() > 0 {
+	n := zp.Len()
+	if n > 0 {
 		idx, _ := zp.find(field)
-		if idx < zp.Zllen() { // update
+		if idx < n { // update
 			update = true
 			zp.ReplaceAtIndex(idx, val)
 		}
@@ -37,11 +38,12 @@ func (zp *Zipmap) set(field, val []byte) {
 }
 
 func (zp *Zipmap) get(field []byte) (val []byte) {
-	if zp.Zllen() == 0 {
+	n := zp.Len()
+	if n == 0 {
 		return
 	}
 	idx, offset := zp.find(field)
-	if idx >= zp.Zllen() {
+	if idx >= n {
 		return
 	}
 	val, _ = zp.DecodeEntry(offset)
@@ -49,7 +51,7 @@ func (zp *Zipmap) get(field []byte) (val []byte) {
 }
 
 func (zp *Zipmap) del(field []byte) {
-	if zp.Zllen() == 0 {
+	if zp.Len() == 0 {
 		return
 	}
 	idx, _ := zp.find(field)
@@ -58,11 +60,12 @@ func (zp *Zipmap) del(field []byte) {
 }
 
 func (zp *Zipmap) exists(field []byte) bool {
-	if zp.Zllen() == 0 {
+	n := zp.Len()
+	if n == 0 {
 		return false
 	}
 	idx, _ := zp.find(field)
-	return idx < zp.Zllen()
+	return idx < n
 }
 
 func (zp *Zipmap) Len() uint16 {
@@ -70,7 +73,7 @@ func (zp *Zipmap) Len() uint16 {
 }
 
 func (zp *Zipmap) hlen() uint16 {
-	return zp.Zllen() / 2
+	return zp.Len() / 2
 }
 
 func (zp *Zipmap) find(field []byte) (uint16, uint32) {

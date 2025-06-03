@@ -167,8 +167,8 @@ func newQuicklistNode() *QuicklistNode {
 	zl := ds.NewZiplist()
 	return &QuicklistNode{
 		zl:      zl,
-		zlbytes: zl.Zlbytes(),
-		cnt:     zl.Zllen(),
+		zlbytes: zl.Bytes(),
+		cnt:     zl.Len(),
 		fill:    2,
 	}
 }
@@ -176,8 +176,8 @@ func newQuicklistNode() *QuicklistNode {
 func CreateQuicklistNode(zl *ds.Ziplist) *QuicklistNode {
 	node := newQuicklistNode()
 	node.zl = zl
-	node.zlbytes = zl.Zlbytes()
-	node.cnt = zl.Zllen()
+	node.zlbytes = zl.Bytes()
+	node.cnt = zl.Len()
 	return node
 }
 
@@ -201,8 +201,8 @@ func (n *QuicklistNode) insert(entry []byte, where int8) {
 	} else if where == quicklistTail {
 		n.zl.Push(entry)
 	}
-	n.zlbytes = n.zl.Zlbytes()
-	n.cnt = n.zl.Zllen()
+	n.zlbytes = n.zl.Bytes()
+	n.cnt = n.zl.Len()
 	return
 }
 
@@ -254,11 +254,11 @@ func (n *QuicklistNode) extractEncoded() ([]byte, uint16, uint32, uint32) {
 }
 
 func (n *QuicklistNode) headOffset() uint32 {
-	return n.zl.Zlhead()
+	return n.zl.HeadOffset()
 }
 
 func (n *QuicklistNode) endOffset() uint32 {
-	return n.zl.Zlbytes()
+	return n.zl.Bytes()
 }
 
 func (ql *Quicklist) PopLeft() [][]byte {
