@@ -603,7 +603,7 @@ func (s *Server) prepareForShutdown() bool {
 }
 
 func (s *Server) isShutdownInited() bool {
-	return s.isAllClientFreed()
+	return s.ShutdownStartTime != 0
 }
 
 // The work that needs to be completed before the server exit.
