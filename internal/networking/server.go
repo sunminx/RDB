@@ -24,9 +24,6 @@ type Server struct {
 	gnet.BuiltinEventEngine
 	Dumper
 	Ctx                    context.Context
-	el                     gnet.EventLoop
-	runner                 *CronRunner
-	wakeupRunner           atomic.Int32
 	CancelFunc             context.CancelFunc
 	CancelCalled           bool
 	Daemonize              bool
@@ -38,7 +35,6 @@ type Server struct {
 	Port                   int
 	ProtoAddr              string
 	MaxFd                  int
-	NetLoopState           int
 	Clients                []*Client
 	cmds                   []cmd.Command
 	Requirepass            bool
@@ -88,11 +84,33 @@ type Server struct {
 	Shutdown               atomic.Bool
 	ShutdownTimeout        int64
 	ShutdownStartTime      int64
-	Terminated             bool
+
+	// status indicates what status the server is in.
+	status serverStatus
+
+	// el is the eventLoop which can used to push cron to task queue.
+	el gnet.EventLoop
+
+	// runner is a implements of the gnet.Runnable, which contains cron task.
+	runner *CronRunner
+
+	// wakeupRunner is used to avoid adding multiple crons to the task queue of eventLoop.
+	// Only when the previous cron finishes execution can a new cron be added.
+	wakeupRunner atomic.Int32
 }
 
+type serverStatus int8
+
 const (
-	netLoopStoped = iota + 1
+	// running indicates we are in the main-loop.
+	running serverStatus = iota + 1
+
+	// shutdown indicates we received the SIGINT or SIGTERM signal.
+	shutdown
+
+	// terminated indicates whether the post-processing work after
+	// the server is taken shutdown has been completed.
+	terminated
 )
 
 const (
@@ -126,12 +144,17 @@ type Dumper interface {
 var rejectConnResp = []byte("connection refused.")
 
 func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
+	// When the server is ready to shutdown, the new connection will be refused.
 	if s.Shutdown.Load() {
 		conn.Write(rejectConnResp)
 		return nil, gnet.Close
 	}
 
-	// get gnet.EventLoop and new a CronRunner instance at first connection.
+	// Once there is a client connection, we have to get the eventLoop refer and
+	// the cron need to be pushed to the task queue of eventLoop.
+
+	// The purpose of pushing the cron to task queue is to execute the cron after
+	// the network events is completed in every loop.
 	s.initCronRunner(conn.EventLoop())
 
 	fd := conn.Fd()
@@ -152,10 +175,10 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 
 var once sync.Once
 
+// initCronRunner initialize fields of el & runner at once.
 func (s *Server) initCronRunner(el gnet.EventLoop) {
 	once.Do(func() {
 		runner := CronRunner{server: s}
-		// el.Execute(context.Background(), &runner)
 		s.el = el
 		s.runner = &runner
 	})
@@ -164,7 +187,7 @@ func (s *Server) initCronRunner(el gnet.EventLoop) {
 func (s *Server) OnClose(conn gnet.Conn, err error) (action gnet.Action) {
 	fd := conn.Fd()
 	if fd < s.MaxFd {
-		s.Clients[fd] = nilClient()
+		s.Clients[fd].fd = -1
 	}
 
 	if err != nil {
@@ -193,7 +216,7 @@ func (s *Server) OnTick() (time.Duration, gnet.Action) {
 		s.cron()
 	}
 
-	if s.Terminated {
+	if s.status == terminated {
 		return time.Second, gnet.Shutdown
 	}
 	// This interval determines the frequency at which cron is added
@@ -203,16 +226,18 @@ func (s *Server) OnTick() (time.Duration, gnet.Action) {
 }
 
 func (s *Server) OnShutdown(_ gnet.Engine) {
-	s.NetLoopState = netLoopStoped
+	s.status = terminated
 }
 
 var protoIOBufLen = 1024 * 16
 
+// processTrafficEvent read request from conn and write response to conn.
 func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 	cli := s.Clients[conn.Fd()]
 	if cli == nil || cli.fd == -1 {
 		return gnet.Close
 	}
+
 	cli.state = runnableState
 	cli.lastInteraction = time.Now().UnixMilli()
 
@@ -230,7 +255,7 @@ func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 		}
 	}
 
-	if s.Shutdown.Load() || (cli.flag&closeASAP) != 0 {
+	if (cli.flag & closeASAP) != 0 {
 		return gnet.Close
 	}
 
@@ -238,9 +263,11 @@ func (s *Server) processTrafficEvent(conn gnet.Conn) gnet.Action {
 		conn.Write(cli.reply)
 		cli.reply = make([]byte, 0)
 	}
+
 	cli.state = idleState
 
-	if (cli.flag & closeAfterReply) != 0 {
+	// If the server is going shutdown, we will write close the connection after output response.
+	if s.Shutdown.Load() || (cli.flag&closeAfterReply) != 0 {
 		return gnet.Close
 	}
 	return gnet.None
@@ -262,6 +289,7 @@ const defMaxFd = 1024
 // The default capacity of the aof output buffer.
 const defAofBufCapacity = 1024 * 1024 * 10
 
+// NewServer create a new Server instance with default value for fields.
 func NewServer() *Server {
 	start := time.Now()
 	ctx, cancelFunc := context.WithCancel(context.Background())
@@ -292,25 +320,25 @@ func NewServer() *Server {
 		AofState:           AofOff,
 		AofBuf:             make([]byte, 0, defAofBufCapacity),
 		AofLastWriteStatus: aofWriteOk,
-		Terminated:         false,
 	}
 }
 
 func initClients(n int) []*Client {
-	clis := make([]*Client, n+1, n+1)
+	clients := make([]*Client, n+1, n+1)
 	for i := 0; i < n+1; i++ {
-		clis[i] = nilClient()
+		clients[i] = nilClient()
 	}
-	return clis
+	return clients
 }
 
+// Init is used to initialize partial field of server.
 func (s *Server) Init() {
 	s.cmds = cmd.CommandTable
 	s.CmdLock = &sync.RWMutex{}
 	s.UnlockNotice = make(chan struct{})
 	s.RunnableClientCh = make(chan *Client, 1024)
-
 	s.BackgroundDoneChan = make(chan uint8, 1)
+	s.status = running
 
 	// Receive the message that the lock of command execution is released.
 	// check if there are any clients currently blocking and waiting to execute command,
@@ -329,6 +357,7 @@ func (s *Server) Init() {
 	}()
 }
 
+// LoadDataFromDisk rebuild DB by load RDB or AOF file during the server startup.
 func (s *Server) LoadDataFromDisk() {
 	start := time.Now()
 	if s.AofState == AofOn {
@@ -342,12 +371,16 @@ func (s *Server) LoadDataFromDisk() {
 	}
 }
 
+// OpenAofFileIfNeeded open AOF incr file in appendonly mode in order to
+// persistent the write command during the running phase.
 func (s *Server) OpenAofFileIfNeeded() {
 	if s.AofState == AofOn {
 		s.AofOpenOnServerStart(s)
 	}
 }
 
+// LoopupCommand search command by the name. it returns false when
+// no command has been found.
 func (s *Server) LookupCommand(name string) (cmd.Command, bool) {
 	for _, command := range s.cmds {
 		if name == command.Name {
@@ -357,10 +390,13 @@ func (s *Server) LookupCommand(name string) (cmd.Command, bool) {
 	return cmd.EmptyCommand, false
 }
 
+// A CronRunner is a implements of gnet.Runnable which used to wrap a task
+// that can be pushed to task queue.
 type CronRunner struct {
 	server *Server
 }
 
+// Run will be called after be poped from task queue.
 func (c *CronRunner) Run(_ context.Context) error {
 	c.server.cron()
 	return nil
@@ -375,18 +411,21 @@ const (
 	DoneAofBgsave uint8 = 2
 )
 
+// cron is a scheduled task used for processing some work that is conducive to server stability.
 func (s *Server) cron() {
 	s.UnixTime = time.Now().UnixMilli()
 
+	// Handle background operations on Redis databases.
 	s.databasesCron()
 
+	// We need to do a few operations on clients asynchronously.
 	s.clientsCron()
 
 	// Shutting down in a safe way when we received SIGTERM or SIGINT.
 	if s.Shutdown.Load() && !s.isShutdownInited() {
 		slog.Info("the shutdown is started", "startTime", s.UnixTime)
 		if s.prepareForShutdown() {
-			s.Terminated = true
+			s.status = terminated
 			return
 		}
 	} else if s.isShutdownInited() {
@@ -395,7 +434,7 @@ func (s *Server) cron() {
 			slog.Info("start do the work before shutdown")
 			if s.finishShutdown() {
 				slog.Info("the work before shutdown is completed")
-				s.Terminated = true
+				s.status = terminated
 				return
 			}
 		}
@@ -468,6 +507,9 @@ const (
 	aofWriteOk  = true
 )
 
+// flushAppendOnlyFile output the aof buffer and flush the kernel buffer to stable storage.
+//
+// Note that the flushing is not done every time and the rate depends on the AofSync.
 func (s *Server) flushAppendOnlyFile(force bool) {
 	if len(s.AofBuf) > 0 {
 		n, err := s.AofFile.Write(s.AofBuf)
@@ -560,6 +602,10 @@ func (s *Server) prepareForShutdown() bool {
 	return false
 }
 
+func (s *Server) isShutdownInited() bool {
+	return s.isAllClientFreed()
+}
+
 // The work that needs to be completed before the server exit.
 // 1. Check and Log ack offset of all replicas.
 // 2. Kill child process for RDB bgsave if it's exists.
@@ -631,12 +677,8 @@ func (s *Server) killPersistingChildRoutine() {
 	}
 }
 
-func (s *Server) isShutdownInited() bool {
-	return s.ShutdownStartTime != 0
-}
-
 func (s *Server) isReadyShutdown() bool {
-	return s.NetLoopState == netLoopStoped
+	return s.isAllClientFreed()
 }
 
 func (s *Server) isBgsaveOrAofRewriteRunning() bool {

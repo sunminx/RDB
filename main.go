@@ -66,6 +66,7 @@ func main() {
 	slog.Info("Bye bye ...")
 }
 
+// registerSignalHandler registers a handler for SIGTERM | SIGINT.
 func registerSignalHandler(server *networking.Server) {
 	signalCh := make(chan os.Signal, 1)
 	signal.Notify(signalCh, syscall.SIGINT, syscall.SIGTERM)
@@ -76,6 +77,7 @@ func registerSignalHandler(server *networking.Server) {
 	}()
 }
 
+// daemonize fork a child process to run main-loop, the parent process exit immediately.
 func daemonize() {
 	name, err := os.Executable()
 	if err != nil {
@@ -96,6 +98,7 @@ func daemonize() {
 	os.Exit(0)
 }
 
+// initLog open the log file and set the log level.
 func initLog(path, level string) (*os.File, error) {
 	file, err := os.OpenFile(path, os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0666)
 	if err != nil {
