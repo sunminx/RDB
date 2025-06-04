@@ -15,10 +15,11 @@ func GetCommand(cli client) bool {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return OK
 	}
-	//if robj.Type() != dict.ObjString {
-	//	cli.AddReplyError(common.Shared["wrongtypeerr"])
-	//	return ERR
-	//}
+
+	if robj.Type() != obj.TypeString {
+		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		return ERR
+	}
 
 	cli.AddReplyBulk(robj)
 	return OK

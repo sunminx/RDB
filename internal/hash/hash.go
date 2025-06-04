@@ -47,7 +47,7 @@ func Del(robj *obj.Robj, field []byte) {
 
 func Len(robj *obj.Robj) int64 {
 	if robj.CheckEncoding(obj.EncodingZipmap) {
-		return int64(unwrap(robj).hlen())
+		return int64(unwrap(robj).HLen())
 	}
 	return 0
 }

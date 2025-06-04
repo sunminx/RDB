@@ -24,6 +24,9 @@ type Server struct {
 	gnet.BuiltinEventEngine
 	Dumper
 	Ctx                    context.Context
+	el                     gnet.EventLoop
+	runner                 *CronRunner
+	wakeupRunner           atomic.Int32
 	CancelFunc             context.CancelFunc
 	CancelCalled           bool
 	Daemonize              bool
@@ -85,6 +88,7 @@ type Server struct {
 	Shutdown               atomic.Bool
 	ShutdownTimeout        int64
 	ShutdownStartTime      int64
+	Terminated             bool
 }
 
 const (
@@ -127,6 +131,9 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 		return nil, gnet.Close
 	}
 
+	// get gnet.EventLoop and new a CronRunner instance at first connection.
+	s.initCronRunner(conn.EventLoop())
+
 	fd := conn.Fd()
 	if s.MaxFd <= fd {
 		s.MaxFd = 2 * fd
@@ -141,6 +148,17 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 	cli.lastInteraction = time.Now().UnixMilli()
 	s.Clients[fd] = cli
 	return nil, gnet.None
+}
+
+var once sync.Once
+
+func (s *Server) initCronRunner(el gnet.EventLoop) {
+	once.Do(func() {
+		runner := CronRunner{server: s}
+		// el.Execute(context.Background(), &runner)
+		s.el = el
+		s.runner = &runner
+	})
 }
 
 func (s *Server) OnClose(conn gnet.Conn, err error) (action gnet.Action) {
@@ -159,13 +177,28 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 	if conn.Fd() > s.MaxFd {
 		return gnet.Close
 	}
-	return s.processTrafficEvent(conn)
+	action := s.processTrafficEvent(conn)
+	return action
 }
 
 func (s *Server) OnTick() (time.Duration, gnet.Action) {
-	if exit := s.cron(); exit {
+	// When at least one client is connected, the cron are registered
+	// in the task queue of the EventLoop, and the scheduled tasks
+	// are executed after each loop of network event is completed.
+	if s.el != nil {
+		if s.wakeupRunner.CompareAndSwap(0, 1) {
+			s.el.Execute(context.Background(), s.runner)
+		}
+	} else {
+		s.cron()
+	}
+
+	if s.Terminated {
 		return time.Second, gnet.Shutdown
 	}
+	// This interval determines the frequency at which cron is added
+	// to the task queue of the EventLoop.
+	// Polling network event in gnet is non-blocking.
 	return time.Duration(1000/s.Hz) * time.Millisecond, gnet.None
 }
 
@@ -232,9 +265,11 @@ const defAofBufCapacity = 1024 * 1024 * 10
 func NewServer() *Server {
 	start := time.Now()
 	ctx, cancelFunc := context.WithCancel(context.Background())
+	n := atomic.Int32{}
 	return &Server{
 		Ctx:                ctx,
 		CancelFunc:         cancelFunc,
+		wakeupRunner:       n,
 		Daemonize:          false,
 		MaxIdleTime:        0,
 		TcpKeepalive:       300,
@@ -257,6 +292,7 @@ func NewServer() *Server {
 		AofState:           AofOff,
 		AofBuf:             make([]byte, 0, defAofBufCapacity),
 		AofLastWriteStatus: aofWriteOk,
+		Terminated:         false,
 	}
 }
 
@@ -321,6 +357,15 @@ func (s *Server) LookupCommand(name string) (cmd.Command, bool) {
 	return cmd.EmptyCommand, false
 }
 
+type CronRunner struct {
+	server *Server
+}
+
+func (c *CronRunner) Run(_ context.Context) error {
+	c.server.cron()
+	return nil
+}
+
 const (
 	activeExpireCycleSlowTimePerc = 25
 )
@@ -330,17 +375,19 @@ const (
 	DoneAofBgsave uint8 = 2
 )
 
-func (s *Server) cron() bool {
+func (s *Server) cron() {
 	s.UnixTime = time.Now().UnixMilli()
 
 	s.databasesCron()
+
 	s.clientsCron()
 
 	// Shutting down in a safe way when we received SIGTERM or SIGINT.
 	if s.Shutdown.Load() && !s.isShutdownInited() {
 		slog.Info("the shutdown is started", "startTime", s.UnixTime)
 		if s.prepareForShutdown() {
-			return true
+			s.Terminated = true
+			return
 		}
 	} else if s.isShutdownInited() {
 		if s.UnixTime-s.ShutdownStartTime > s.ShutdownTimeout ||
@@ -348,7 +395,8 @@ func (s *Server) cron() bool {
 			slog.Info("start do the work before shutdown")
 			if s.finishShutdown() {
 				slog.Info("the work before shutdown is completed")
-				return true
+				s.Terminated = true
+				return
 			}
 		}
 	}
@@ -403,7 +451,10 @@ func (s *Server) cron() bool {
 	if s.AofState != AofOff {
 		s.flushAppendOnlyFile(false)
 	}
-	return false
+
+	if s.el != nil {
+		s.wakeupRunner.Store(0)
+	}
 }
 
 const (
