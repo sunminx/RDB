@@ -27,7 +27,7 @@ type dictable interface {
 }
 
 func newSdb(id int) *sdb {
-	return &sdb{id, NewMap(), NewMap(), 0}
+	return &sdb{id: id, dict: NewMap(), expires: NewMap(), slen: 0}
 }
 
 func (sdb *sdb) lookupKey(key string) (*obj.Robj, bool) {

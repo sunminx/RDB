@@ -234,5 +234,6 @@ func (db *DB) Empty() int {
 		slog.Warn("db is not in normal state while empty db is not allowed")
 		return 0
 	}
+	_ = db.sdbs[0].expires.Empty()
 	return db.sdbs[0].dict.Empty()
 }

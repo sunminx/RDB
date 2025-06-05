@@ -14,6 +14,7 @@ class TestList(unittest.TestCase):
             self.cli.lpush(key, item * size)
         for item in reversed(items):
             self.assertEqual(self.cli.lpop(key), item * size)
+        self.cli.flushall()
 
     def tearDown(self):
         if self.cli is not None:
