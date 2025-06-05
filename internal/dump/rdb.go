@@ -133,10 +133,10 @@ func (rdb *Rdber) saveAuxField(key, val string) bool {
 	if !rdb.saveType(rdbOpcodeAux) {
 		return false
 	}
-	if !rdb.saveRawString(key) {
+	if !rdb.saveString(key) {
 		return false
 	}
-	return rdb.saveRawString(val)
+	return rdb.saveString(val)
 }
 
 const (
@@ -335,7 +335,7 @@ func (rdb *Rdber) saveKeyValPair(key string, val *obj.Robj, expire int64) bool {
 		saved = saved && rdb.saveMillisencondTime(expire)
 	}
 	saved = saved && rdb.saveObjectType(val)
-	saved = saved && rdb.saveRawString(key)
+	saved = saved && rdb.saveString(key)
 	saved = saved && rdb.saveObject(val)
 	return saved
 }
@@ -382,7 +382,7 @@ func (rdb *Rdber) saveStringObject(val *obj.Robj) bool {
 		}
 		return rdb.writeRaw(enc)
 	} else if val.CheckEncoding(obj.EncodingRaw) {
-		rdb.saveRawString(string(val.Val().(sds.SDS)))
+		rdb.saveBytes(val.Val().(sds.SDS))
 		return saved
 	}
 	return nosave
@@ -457,12 +457,16 @@ func (rdb *Rdber) saveHashObject(val *obj.Robj) bool {
 	return nosave
 }
 
-func (rdb *Rdber) saveRawString(str string) bool {
-	ln := uint64(len(str))
-	if !rdb.saveLen(ln) {
+func (rdb *Rdber) saveString(str string) bool {
+	return rdb.saveBytes([]byte(str))
+}
+
+func (rdb *Rdber) saveBytes(b []byte) bool {
+	_len := uint64(len(b))
+	if !rdb.saveLen(_len) {
 		return nosave
 	}
-	return rdb.writeRaw([]byte(str))
+	return rdb.writeRaw(b)
 }
 
 const rdbLenErr = math.MaxUint64
