@@ -80,14 +80,13 @@ func (w *Writer) Write(p []byte) (n int, err error) {
 		if w.updateCksum {
 			w.updateCksumFn(w, p, chunk)
 		}
-		n, err := w.wr.Write(p)
-		w.wr.Flush()
+		n, err := w.wr.Write(p[:chunk])
 		if err != nil {
 			return n, err
 		}
-		p = p[chunk:]
-		ln -= chunk
-		w.processBytes += chunk
+		p = p[n:]
+		ln -= n
+		w.processBytes += n
 	}
 	return (w.processBytes - processBytes), nil
 }
