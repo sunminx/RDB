@@ -367,8 +367,9 @@ func aofRewrite(filepath string, server *networking.Server) bool {
 			slog.Warn("failed rename temp file", "filepath", filepath, "err", err)
 			return false
 		}
+	} else {
+		server.BackgroundDoneChan <- networking.DoneAofBgsave
 	}
-	server.BackgroundDoneChan <- networking.DoneAofBgsave
 	return true
 }
 
