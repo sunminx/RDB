@@ -410,6 +410,7 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 					"err", err)
 			} else {
 				server.AofRewriteBaseSize = baseFileInfo.Size()
+				server.AofCurrSize = baseFileInfo.Size()
 			}
 			baseFile.Close()
 		}
@@ -428,12 +429,12 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 
 		am.moveIncrAofToHist()
 
+		am.deleteAofHistFiles(server)
+
 		if err := am.persist(server); err != nil {
 			slog.Warn("failed persist new AOF manifest file", "err", err)
 			return
 		}
-
-		am.deleteAofHistFiles(server)
 	}
 
 	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)

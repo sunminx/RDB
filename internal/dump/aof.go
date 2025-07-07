@@ -728,12 +728,15 @@ func (am *aofManifest) persist(server *networking.Server) error {
 }
 
 func (am *aofManifest) deleteAofHistFiles(server *networking.Server) {
+	histAofInfos := make([]*aofInfo, 0)
 	for _, ai := range am.histAofInfos {
 		filepath := makePath(server.AofDirname, ai.name)
 		if err := os.Remove(filepath); err != nil {
+			histAofInfos = append(histAofInfos, ai)
 			slog.Warn("failed delete AOF hist file", "filepath", filepath, "err", err)
 		}
 	}
+	am.histAofInfos = histAofInfos
 }
 
 func write(file *os.File, p []byte) error {
