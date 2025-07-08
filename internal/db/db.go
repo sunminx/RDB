@@ -189,7 +189,7 @@ func (db *DB) InNormalState() bool {
 	return db.state == InNormalState
 }
 
-const dbMergeBatchNum = 128
+const dbMergeBatchNum = 65525
 
 func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 	if db.state != InMergeState {
