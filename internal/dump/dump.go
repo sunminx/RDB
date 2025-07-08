@@ -6,7 +6,6 @@ import (
 	"fmt"
 	"log/slog"
 	"os"
-	"strings"
 	"time"
 
 	"github.com/sunminx/RDB/internal/db"
@@ -168,6 +167,10 @@ func rdbBgsaveDoneHandlerDisk(server *networking.Server) {
 	server.RdbSaveTimeStart = -1
 }
 
+// A am is the newest manifest for AOF rewrite.
+// It must be initialized by 'AofLoad' function during server startup.
+var am *aofManifest
+
 const (
 	rewrited  = true
 	noRewrite = false
@@ -178,20 +181,19 @@ func (_ Dumper) AofLoad(server *networking.Server) bool {
 	filepath := makePath(server.AofDirname, filename)
 	file, err := os.Open(filename)
 	if err != nil {
-		slog.Info("quit AOF load", "filepath", filepath, "reason", err)
-		return false
+		if !os.IsNotExist(err) {
+			slog.Info("exit", "filepath", filepath, "reason", err)
+			os.Exit(1)
+		}
+		return aofLoadUnChunkMode(server)
 	}
 	defer file.Close()
 
-	am, err := createAofManifest(file)
+	am, err = createAofManifest(file)
 	if err == nil {
 		return aofLoadChunkMode(am, server)
 	}
-	if err != errManifestFileNotFound {
-		slog.Warn("failed load AOF file", "err", err)
-		return false
-	}
-	return aofLoadUnChunkMode(server)
+	return false
 }
 
 func loadingAbsProgress(server *networking.Server, pos int64) {
@@ -320,6 +322,7 @@ func (_ Dumper) AofRewriteBackground(server *networking.Server) bool {
 	server.DB.SetState(db.InPersistState)
 	server.CmdLock.Unlock()
 	now := time.Now()
+	openAofIncrFile(server, true)
 	go aofRewrite("", server)
 	slog.Info("background saving started")
 	server.AofRewriteTimeStart = now.UnixMilli()
@@ -375,23 +378,6 @@ func aofRewrite(filepath string, server *networking.Server) bool {
 
 func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 	if !d.waitResetDBState {
-		filepath := makePath(
-			server.AofDirname,
-			aofManifestFilename(server.AofFilename),
-		)
-		file, err := os.Open(filepath)
-		if err != nil {
-			slog.Warn("failed open AOF manifest file",
-				"filepath", filepath, "err", err)
-		}
-		defer file.Close()
-
-		am, err := createAofManifest(file)
-		if err != nil {
-			slog.Warn("failed create aofManifest instance", "err", err)
-			return
-		}
-
 		tempBaseFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
 		baseFilename := am.nextBaseAofName(server)
 		baseFilepath := makePath(server.AofDirname, baseFilename)
@@ -442,6 +428,7 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 		return
 	}
 	d.waitResetDBState = notWait
+	server.AofCurrSize = 0
 	server.DB.SetState(db.InMergeState)
 	server.AofChildRunning.Store(networking.ChildNotInRunning)
 	slog.Info("Background AOF rewrite signal handler done")
@@ -449,24 +436,8 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 }
 
 func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
-	var am *aofManifest
-	amFilepath := makePath(server.AofDirname, aofManifestFilename(server.AofFilename))
-	amFile, err := os.Open(amFilepath)
-	if err != nil {
-		if strings.Index(err.Error(), "no such file or directory") != -1 {
-			am = newAofManifest()
-		} else {
-			slog.Error("can't create AOF manifest file on server start", "err", err)
-			os.Exit(1)
-		}
-	}
-	defer amFile.Close()
-
 	if am == nil {
-		am, err = createAofManifest(amFile)
-		if err != nil {
-			slog.Error("failed open AOF manifest file on server start", "err", err)
-		}
+		am = newAofManifest()
 	}
 
 	if am.baseAofInfo == nil {
@@ -477,14 +448,22 @@ func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
 			os.Exit(1)
 		}
 	}
+	openAofIncrFile(server, false)
+}
 
+func openAofIncrFile(server *networking.Server, next bool) {
 	var aofIncrFilename string
-	if am.currIncrFileSeq != 0 {
-		idx := am.currIncrFileSeq - 1
-		aofIncrFilename = am.incrAofInfos[idx].name
-	} else {
+	if next || am.currIncrFileSeq == 0 {
 		aofIncrFilename = am.nextIncrAofName(server)
+	} else {
+		for _, incr := range am.incrAofInfos {
+			if incr.seq == am.currIncrFileSeq {
+				aofIncrFilename = incr.name
+				break
+			}
+		}
 	}
+
 	aofIncrFilepath := makePath(server.AofDirname, aofIncrFilename)
 	aofIncrFile, err := os.OpenFile(aofIncrFilepath,
 		os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)

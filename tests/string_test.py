@@ -58,3 +58,6 @@ class TestString(unittest.TestCase):
     def tearDown(self):
         if self.cli is not None:
             self.cli.close()
+
+if __name__ == '__main__':
+    unittest.main()

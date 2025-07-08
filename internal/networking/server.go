@@ -413,6 +413,12 @@ const (
 
 // cron is a scheduled task used for processing some work that is conducive to server stability.
 func (s *Server) cron() {
+	defer func() {
+		if s.el != nil {
+			s.wakeupRunner.Store(0)
+		}
+	}()
+
 	s.UnixTime = time.Now().UnixMilli()
 
 	// Handle background operations on Redis databases.
@@ -491,9 +497,6 @@ func (s *Server) cron() {
 		s.flushAppendOnlyFile(false)
 	}
 
-	if s.el != nil {
-		s.wakeupRunner.Store(0)
-	}
 }
 
 const (

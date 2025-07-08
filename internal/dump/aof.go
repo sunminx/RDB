@@ -678,6 +678,9 @@ func (am *aofManifest) moveIncrAofToHist() {
 	if ln < 2 {
 		return
 	}
+	for i := 0; i < ln-1; i++ {
+		am.incrAofInfos[i].typ = 'h'
+	}
 	am.histAofInfos = append(am.histAofInfos, am.incrAofInfos[:ln-1]...)
 	am.incrAofInfos = am.incrAofInfos[ln-1:]
 }

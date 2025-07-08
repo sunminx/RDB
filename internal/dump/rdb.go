@@ -317,7 +317,7 @@ func (rdb *Rdber) loadStringIntObject(typ uint8) int64 {
 		if rdb.readRaw(p) != 2 {
 			return -1
 		}
-		n = int64(p[1]) | int64(p[2])<<8
+		n = int64(p[0]) | int64(p[1])<<8
 	} else if typ == rdbEncInt32 {
 		p = make([]byte, 4, 4)
 		if rdb.readRaw(p) != 4 {
