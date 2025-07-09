@@ -1,6 +1,7 @@
 package db
 
 import (
+	"sync"
 	"time"
 
 	obj "github.com/sunminx/RDB/internal/object"
@@ -8,6 +9,7 @@ import (
 )
 
 type sdb struct {
+	sync.RWMutex
 	id      int
 	dict    dictable
 	expires dictable
@@ -16,6 +18,7 @@ type sdb struct {
 
 type dictable interface {
 	Add(string, *obj.Robj) bool
+	Set(string, *obj.Robj) bool
 	Replace(string, *obj.Robj) bool
 	Del(string) bool
 	FetchValue(string) (*obj.Robj, bool)
@@ -30,75 +33,28 @@ func newSdb(id int) *sdb {
 	return &sdb{id: id, dict: NewMap(), expires: NewMap(), slen: 0}
 }
 
-func (sdb *sdb) lookupKey(key string) (*obj.Robj, bool) {
-	val, ok := sdb.dict.FetchValue(key)
-	if ok {
-		// todo
-		return val, true
-	}
-
-	return &emptyRobj, false
-}
-
-func (sdb *sdb) lookupKeyReadWithFlags(key string) (*obj.Robj, bool) {
-	if sdb.expireIfNeeded(key) {
-		return &emptyRobj, false
-	}
-	val, ok := sdb.dict.FetchValue(key)
-	if ok {
-		// todo
-		return val, true
-	}
-	return &emptyRobj, false
-}
-
-func (sdb *sdb) expireIfNeeded(key string) bool {
-	if !sdb.keyIsExpired(key) {
-		return false
-	}
-	return sdb.syncDel(key)
-}
-
 var emptyRobj = obj.Robj{}
 
-func (sdb *sdb) setKey(key string, val *obj.Robj) {
-	sds.TryObjectEncoding(val)
-
-	if _, ok := sdb.dict.FetchValue(key); ok {
-		sdb.dict.Replace(key, val)
-	} else {
-		sdb.dict.Add(key, val)
+func (sdb *sdb) get(key string) *obj.Robj {
+	sdb.RLock()
+	if sdb.keyIsExpired(key) {
+		sdb.RUnlock()
+		sdb.del(key)
+		return nil
 	}
-}
-
-func (sdb *sdb) setExpire(key string, expire time.Duration) {
-	sdb.expires.Replace(key, sds.NewRobj(int64(expire)))
+	o, _ := sdb.dict.FetchValue(key)
+	sdb.RUnlock()
+	return o
 }
 
 func (sdb *sdb) expire(key string) time.Duration {
+	sdb.RLock()
+	defer sdb.RUnlock()
 	e, ok := sdb.expires.FetchValue(key)
 	if !ok {
 		return -1
 	}
 	return time.Duration(e.Val().(int64))
-}
-
-func (sdb *sdb) delKey(key string) {
-	sdb.dict.Del(key)
-	sdb.expires.Del(key)
-}
-
-const (
-	activeExpireCycleLookupsPerLoop = 20
-)
-
-func (sdb *sdb) activeExpireCycleTryExpire(entry Entry, now time.Time) bool {
-	expire := entry.TimeDurationVal()
-	// expired
-	if now.UnixMilli() > int64(expire) {
-		return sdb.syncDel(entry.Key)
-	}
-	return false
 }
 
 func (sdb *sdb) keyIsExpired(key string) bool {
@@ -110,11 +66,64 @@ func (sdb *sdb) keyIsExpired(key string) bool {
 	return (time.Now().UnixMilli() - expire) > 0
 }
 
-func (sdb *sdb) syncDel(key string) bool {
-	if sdb.expires.Used() > 0 {
-		_ = sdb.expires.Del(key)
+func (sdb *sdb) set(expire int64, key string, val *obj.Robj) {
+	sds.TryObjectEncoding(val)
+
+	sdb.Lock()
+	defer sdb.Unlock()
+	added := sdb.dict.Set(key, val)
+	if added {
+		sdb.slen++
 	}
-	return sdb.dict.Del(key)
+	if expire > 0 {
+		_ = sdb.expires.Set(key, sds.NewRobj(expire))
+	}
+	return
+}
+
+func (sdb *sdb) del(key string) {
+	sdb.Lock()
+	defer sdb.Unlock()
+	deled := sdb.dict.Del(key)
+	if deled {
+		sdb.slen--
+		sdb.expires.Del(key)
+	}
+	return
+}
+
+func (sdb *sdb) setDeleted(key string) {
+	val := sdb.get(key)
+	val.SetDeleted(true)
+}
+
+func (sdb *sdb) empty() int {
+	sdb.Lock()
+	defer sdb.Unlock()
+	n := sdb.dict.Empty()
+	sdb.expires.Empty()
+	sdb.slen = 0
+	return n
+}
+
+func (sdb *sdb) isEmpty() bool {
+	sdb.RLock()
+	defer sdb.RUnlock()
+	return sdb.slen == 0
+}
+
+const (
+	activeExpireCycleLookupsPerLoop = 20
+)
+
+func (sdb *sdb) activeExpireCycleTryExpire(entry Entry, now time.Time) bool {
+	expire := entry.TimeDurationVal()
+	// expired
+	if now.UnixMilli() > int64(expire) {
+		sdb.del(entry.Key)
+		return true
+	}
+	return false
 }
 
 type DBEntry struct {

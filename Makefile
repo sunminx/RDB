@@ -17,3 +17,5 @@ test:
 
 clean:
 	rm -rf RDB
+	rm -rf appendonly*
+	rm -rf temp*

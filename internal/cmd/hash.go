@@ -17,7 +17,7 @@ func HMSetCommand(cli client) bool {
 
 func genericHSetCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
@@ -33,7 +33,7 @@ func genericHSetCommand(cli client) bool {
 		setedNum++
 	}
 
-	cli.SetKey(key, val)
+	cli.Set(-1, key, val)
 	cli.AddReplyStatus(common.Shared["ok"])
 	cli.AddDirty(setedNum)
 	return OK
@@ -41,7 +41,7 @@ func genericHSetCommand(cli client) bool {
 
 func HGetCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
@@ -61,7 +61,7 @@ func HGetCommand(cli client) bool {
 
 func HDelCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
@@ -84,7 +84,7 @@ func HDelCommand(cli client) bool {
 
 func HLenCommand(cli client) bool {
 	key := cli.Key()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
@@ -101,7 +101,7 @@ func HLenCommand(cli client) bool {
 
 func HExistsCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])

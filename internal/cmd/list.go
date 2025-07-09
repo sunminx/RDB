@@ -24,7 +24,7 @@ func LPushCommand(cli client) bool {
 
 func pushGenericCommand(cli client, where int8) bool {
 	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeList) {
 			cli.AddReplyError(common.Shared["wrongtypeerr"])
@@ -44,7 +44,7 @@ func pushGenericCommand(cli client, where int8) bool {
 		pushedNum++
 	}
 	if !exists {
-		cli.SetKey(key, val)
+		cli.Set(-1, key, val)
 	}
 	cli.AddReplyInt64(int64(pushedNum))
 	cli.AddDirty(pushedNum)
@@ -61,7 +61,7 @@ func LPopCommand(cli client) bool {
 
 func popGenericCommand(cli client, where int8) bool {
 	key := cli.Key()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
@@ -88,7 +88,7 @@ func popGenericCommand(cli client, where int8) bool {
 
 func LIndexCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
@@ -113,7 +113,7 @@ func LIndexCommand(cli client) bool {
 
 func LLenCommand(cli client) bool {
 	key := cli.Key()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
@@ -128,7 +128,7 @@ func LLenCommand(cli client) bool {
 
 func LTrimCommand(cli client) bool {
 	key := cli.Key()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR
@@ -156,7 +156,7 @@ func LTrimCommand(cli client) bool {
 
 func LSetCommand(cli client) bool {
 	key := cli.Key()
-	val, exists := cli.LookupKeyRead(key)
+	val, exists := cli.Get(key)
 	if !exists {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return ERR

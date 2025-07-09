@@ -16,7 +16,6 @@ class TestString(unittest.TestCase):
         self.cli.set(key, val)
         self.assertEqual(val, self.cli.get(key))
         self.cli.delete(key)
-        self.cli.get(key)
         self.assertNotEqual(val, self.cli.get(key))
         self.cli.flushall()
 

@@ -31,6 +31,12 @@ func (e *Entry) TimeDurationVal() time.Duration {
 	return time.Duration(t)
 }
 
+func (d *MapDict) Set(key string, val *obj.Robj) bool {
+	_, ok := d.dict[key]
+	d.dict[key] = val
+	return ok
+}
+
 func (d *MapDict) Add(key string, val *obj.Robj) bool {
 	_, ok := d.dict[key]
 	if ok {

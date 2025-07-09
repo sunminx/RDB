@@ -463,7 +463,7 @@ func (s *Server) cron() {
 		for _, sp := range s.SaveParams {
 			if s.Dirty >= sp.Changes &&
 				int(s.UnixTime-s.LastSave) > 1000*sp.Seconds &&
-				s.DB.InNormalState() {
+				s.DB.InNormalStatus() {
 				// We reached the given amount of changes.
 				slog.Info(fmt.Sprintf("%d changes in %d seconds. Saving...\n",
 					sp.Changes, sp.Seconds))
@@ -472,7 +472,7 @@ func (s *Server) cron() {
 			}
 		}
 
-		if !s.isBgsaveOrAofRewriteRunning() && s.DB.InNormalState() &&
+		if !s.isBgsaveOrAofRewriteRunning() && s.DB.InNormalStatus() &&
 			s.AofState == AofOn &&
 			s.AofRewritePerc > 0 && s.AofCurrSize > s.AofRewriteMinSize {
 			// Calculate whether the growth rate of the current AOF file size
@@ -488,7 +488,7 @@ func (s *Server) cron() {
 	}
 
 	// After the db persistence is completed, move the key-val pair in sdbs[1] step by step to sdbs[0].
-	if TryLockWithTimeout(s.CmdLock, 20*time.Millisecond) {
+	if s.DB.InMergeStatus() && TryLockWithTimeout(s.CmdLock, 20*time.Millisecond) {
 		_ = s.DB.MergeIfNeeded(100 * time.Millisecond)
 		s.CmdLock.Unlock()
 	}
