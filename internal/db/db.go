@@ -212,8 +212,11 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 
 		num := 0
 		for e := range db.sdbs[1].Iterator() {
-			db.sdbs[0].setKey(e.Key, e.Val)
-			db.sdbs[1].delKey(e.Key)
+			k, v := e.Key, e.Val
+			if !v.Deleted() {
+				db.sdbs[0].setKey(k, v)
+			}
+			db.sdbs[1].delKey(k)
 			num++
 			if num == dbMergeBatchNum {
 				break
