@@ -11,7 +11,7 @@ import (
 
 func GetCommand(cli client) bool {
 	robj, ok := cli.LookupKeyRead(cli.Key())
-	if !ok {
+	if !ok || robj.Deleted() {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return OK
 	}
