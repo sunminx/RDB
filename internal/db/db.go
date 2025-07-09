@@ -166,7 +166,7 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 	cnt := 0
 
 	for {
-		if db.sdbs[1].slen == 0 {
+		if db.sdbs[1].isEmpty() {
 			db.status.Store(InNormal)
 			slog.Info("the merge of DB has finished")
 			break

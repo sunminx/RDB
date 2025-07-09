@@ -71,7 +71,10 @@ func (sdb *sdb) set(expire int64, key string, val *obj.Robj) {
 
 	sdb.Lock()
 	defer sdb.Unlock()
-	_ = sdb.dict.Set(key, val)
+	added := sdb.dict.Set(key, val)
+	if added {
+		sdb.slen++
+	}
 	if expire > 0 {
 		_ = sdb.expires.Set(key, sds.NewRobj(expire))
 	}
@@ -81,8 +84,11 @@ func (sdb *sdb) set(expire int64, key string, val *obj.Robj) {
 func (sdb *sdb) del(key string) {
 	sdb.Lock()
 	defer sdb.Unlock()
-	sdb.dict.Del(key)
-	sdb.expires.Del(key)
+	deled := sdb.dict.Del(key)
+	if deled {
+		sdb.slen--
+		sdb.expires.Del(key)
+	}
 	return
 }
 
@@ -98,6 +104,12 @@ func (sdb *sdb) empty() int {
 	sdb.expires.Empty()
 	sdb.slen = 0
 	return n
+}
+
+func (sdb *sdb) isEmpty() bool {
+	sdb.RLock()
+	defer sdb.RUnlock()
+	return sdb.slen == 0
 }
 
 const (
