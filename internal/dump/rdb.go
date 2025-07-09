@@ -62,7 +62,7 @@ func (rdb *Rdber) save(ctx context.Context) error {
 		return errors.New("save select db num error")
 	}
 
-	for e := range rdb.db.Iterator() {
+	fn := func(ctx context.Context, e db.DBEntry) error {
 		select {
 		case <-ctx.Done():
 			return errContextCanceled
@@ -72,6 +72,11 @@ func (rdb *Rdber) save(ctx context.Context) error {
 				return errors.New("save key-val pair error")
 			}
 		}
+		return nil
+	}
+
+	if err := rdb.db.Iter(ctx, fn, os.O_RDONLY); err != nil {
+		return err
 	}
 
 	if !rdb.saveType(rdbOpcodeEOF) {
@@ -201,10 +206,7 @@ loop:
 			if expireTime != -1 && expireTime < now {
 				continue
 			}
-			rdb.db.SetKey(key, val)
-			if expireTime != -1 {
-				rdb.db.SetExpire(key, time.Duration(expireTime))
-			}
+			rdb.db.Set(expireTime, key, val)
 			expireTime = -1
 		}
 	}

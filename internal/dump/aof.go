@@ -87,8 +87,7 @@ func (aof *Aofer) closeFile() {
 }
 
 func (aof *Aofer) rewrite(ctx context.Context, timestamp int64) error {
-	var err error
-	for e := range aof.db.Iterator() {
+	fn := func(ctx context.Context, e db.DBEntry) error {
 		select {
 		case <-ctx.Done():
 			return errContextCanceled
@@ -114,18 +113,19 @@ func (aof *Aofer) rewrite(ctx context.Context, timestamp int64) error {
 		expire := aof.db.Expire(e.Key)
 		if expire != -1 {
 			cmd := "*3\r\n$9\r\nPEXPIREAT\r\n"
-			if _, err = aof.wr.Write([]byte(cmd)); err != nil {
+			if _, err := aof.wr.Write([]byte(cmd)); err != nil {
 				return errors.Join(err, errors.New("failed rewrite expire for key "+e.Key))
 			}
 			if !aof.writeBulkString([]byte(e.Key)) {
-				return errors.Join(err, errors.New("failed rewrite expire for key "+e.Key))
+				return errors.New("failed rewrite expire for key " + e.Key)
 			}
 			if !aof.writeBulkInt(int64(expire)) {
-				return errors.Join(err, errors.New("failed rewrite expire for key "+e.Key))
+				return errors.New("failed rewrite expire for key " + e.Key)
 			}
 		}
+		return nil
 	}
-	return nil
+	return aof.db.Iter(ctx, fn, os.O_RDONLY)
 }
 
 func (aof *Aofer) rewriteStringObject(key string, val *obj.Robj) bool {

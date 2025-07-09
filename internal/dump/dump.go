@@ -45,7 +45,7 @@ const (
 	rdbChildTypeSocket = 2 // rdb is written to slave socket.
 )
 
-func (_ Dumper) RdbLoad(server *networking.Server) bool {
+func (Dumper) RdbLoad(server *networking.Server) bool {
 	filename := server.RdbFilename
 	file, err := os.Open(filename)
 	if err != nil {
@@ -76,7 +76,7 @@ func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 		slog.Warn("exit bgsave RDB file because of db can't locked")
 		return nosave
 	}
-	server.DB.SetState(db.InPersistState)
+	server.DB.SetStatus(db.InPersist)
 	server.CmdLock.Unlock()
 	now := time.Now()
 	go d.RdbSave(server)
@@ -91,7 +91,7 @@ type rdberInfo struct {
 	version int
 }
 
-func (_ Dumper) RdbSave(server *networking.Server) bool {
+func (Dumper) RdbSave(server *networking.Server) bool {
 	filename := server.RdbFilename
 	tempfile := fmt.Sprintf("temp-%d.rdb", os.Getgid())
 	file, err := os.Create(tempfile)
@@ -153,7 +153,7 @@ func (d Dumper) RdbSaveBackgroundDoneHandler(server *networking.Server) {
 		return
 	}
 	d.waitResetDBState = notWait
-	server.DB.SetState(db.InMergeState)
+	server.DB.SetStatus(db.InMerge)
 	server.LastSave = time.Now().UnixMilli()
 	server.Dirty -= server.DirtyBeforeBgsave
 	server.RdbChildRunning.Store(networking.ChildNotInRunning)
@@ -173,7 +173,7 @@ const (
 	noRewrite = false
 )
 
-func (_ Dumper) AofLoad(server *networking.Server) bool {
+func (Dumper) AofLoad(server *networking.Server) bool {
 	filename := aofManifestFilename(server.AofFilename)
 	filepath := makePath(server.AofDirname, filename)
 	file, err := os.Open(filename)
@@ -307,7 +307,7 @@ func getAppendOnlyFileSize(file *os.File) int64 {
 	return fileInfo.Size()
 }
 
-func (_ Dumper) AofRewriteBackground(server *networking.Server) bool {
+func (Dumper) AofRewriteBackground(server *networking.Server) bool {
 	if !server.AofChildRunning.CompareAndSwap(
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
@@ -317,7 +317,7 @@ func (_ Dumper) AofRewriteBackground(server *networking.Server) bool {
 		slog.Warn("exit rewrite AOF file because of db can't locked")
 		return false
 	}
-	server.DB.SetState(db.InPersistState)
+	server.DB.SetStatus(db.InPersist)
 	server.CmdLock.Unlock()
 	now := time.Now()
 	go aofRewrite("", server)
@@ -443,13 +443,13 @@ func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
 		return
 	}
 	d.waitResetDBState = notWait
-	server.DB.SetState(db.InMergeState)
+	server.DB.SetStatus(db.InMerge)
 	server.AofChildRunning.Store(networking.ChildNotInRunning)
 	slog.Info("Background AOF rewrite signal handler done")
 	server.CmdLock.Unlock()
 }
 
-func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
+func (Dumper) AofOpenOnServerStart(server *networking.Server) {
 	var am *aofManifest
 	amFilepath := makePath(server.AofDirname, aofManifestFilename(server.AofFilename))
 	amFile, err := os.Open(amFilepath)
@@ -501,7 +501,7 @@ func (_ Dumper) AofOpenOnServerStart(server *networking.Server) {
 	}
 }
 
-func (_ Dumper) FlushAofManifest(server *networking.Server) error {
+func (Dumper) FlushAofManifest(server *networking.Server) error {
 	filename := aofManifestFilename(server.AofFilename)
 	filepath := makePath(server.AofDirname, filename)
 	file, err := os.Open(filepath)

@@ -1,8 +1,10 @@
 package db
 
 import (
+	"context"
 	"fmt"
 	"log/slog"
+	"sync/atomic"
 	"time"
 
 	"github.com/sunminx/RDB/internal/hash"
@@ -15,11 +17,13 @@ const sdbNum = 2
 
 const (
 	// InNormalState indicates that nothing is in ongoing.
-	InNormalState uint8 = 0
+	InNormal int32 = 0
+
 	// InPersistState indicates that there is currently a coroutine performing persistence.
-	InPersistState uint8 = 1
+	InPersist int32 = 1
+
 	// InMergeState indicates that is merging sdbs[1] to sdbs[0].
-	InMergeState uint8 = 2
+	InMerge int32 = 2
 )
 
 type DB struct {
@@ -27,8 +31,7 @@ type DB struct {
 	// will only be written when writing key-val during the redo of aof or rdb.
 	sdbs [sdbNum]*sdb
 
-	// Protected by the server.CmdLock.
-	state uint8
+	status atomic.Int32
 }
 
 const (
@@ -39,57 +42,6 @@ const (
 
 func New() *DB {
 	return &DB{sdbs: [sdbNum]*sdb{newSdb(0), newSdb(1)}}
-}
-
-func (db *DB) LookupKeyRead(key string) (*obj.Robj, bool) {
-	_, val, ok := db.findForRead(key)
-	return val, ok
-}
-
-func (db *DB) findForRead(key string) (*sdb, *obj.Robj, bool) {
-	var sdb *sdb
-	if db.state != InNormalState {
-		sdb := db.sdbs[1]
-		if val, ok := sdb.lookupKeyReadWithFlags(key); ok {
-			return sdb, val, ok
-		}
-	}
-	sdb = db.sdbs[0]
-	val, ok := sdb.lookupKeyReadWithFlags(key)
-	return sdb, val, ok
-}
-
-func (db *DB) LookupKeyWrite(key string) (*obj.Robj, bool) {
-	_, val, ok := db.findForWrite(key)
-	return val, ok
-}
-
-func (db *DB) findForWrite(key string) (*sdb, *obj.Robj, bool) {
-	var sdb *sdb
-	if db.state != InNormalState {
-		sdb = db.sdbs[1]
-		if val, ok := sdb.lookupKeyReadWithFlags(key); ok {
-			if db.state == InMergeState {
-				sdb.delKey(key)
-				sdb = db.sdbs[0]
-				sdb.setKey(key, val)
-
-				// Try moving part key-val pair in sdbs[1] to sdbs[0].
-				_ = db.MergeIfNeeded(20 * time.Millisecond)
-			}
-			return sdb, val, ok
-		}
-	}
-
-	sdb = db.sdbs[0]
-	val, ok := sdb.lookupKeyReadWithFlags(key)
-	// during the persistence process, the key-val to sdbs[1].
-	if ok && db.state == InPersistState {
-		sdb = db.sdbs[1]
-		val = deepcopy(val)
-		sdb.setKey(key, val)
-	}
-	return sdb, val, ok
 }
 
 func deepcopy(val *obj.Robj) *obj.Robj {
@@ -105,46 +57,56 @@ func deepcopy(val *obj.Robj) *obj.Robj {
 	}
 }
 
-func (db *DB) SetKey(key string, val *obj.Robj) {
-	_, robj, ok := db.findForWrite(key)
-	if ok {
-		robj.SetVal(val.Val())
-		robj.SetType(val.Type())
-		robj.SetEncoding(val.Encoding())
-	} else {
-		sdb := db.sdbs[0]
-		if db.state == InPersistState {
-			sdb = db.sdbs[1]
+func (db *DB) Get(key string) (*obj.Robj, bool) {
+	status := db.status.Load()
+	if status != InNormal {
+		sdb := db.sdbs[1]
+		if val := sdb.get(key); val != nil && !val.Deleted() {
+			return val, true
 		}
-		sdb.setKey(key, val)
 	}
+	sdb := db.sdbs[0]
+	val := sdb.get(key)
+	return val, val != nil && !val.Deleted()
 }
 
-func (db *DB) SetExpire(key string, expire time.Duration) {
-	sdb, _, ok := db.findForRead(key)
-	if ok {
-		sdb.setExpire(key, expire)
+func (db *DB) Set(expire int64, key string, val *obj.Robj) {
+	status := db.status.Load()
+	if status == InPersist {
+		sdb := db.sdbs[1]
+		sdb.set(expire, key, val)
+		return
 	}
+	if status == InMerge {
+		sdb := db.sdbs[1]
+		sdb.setDeleted(key)
+	}
+	sdb := db.sdbs[0]
+	sdb.set(expire, key, val)
+	return
+}
+
+func (db *DB) Del(key string) {
+	status := db.status.Load()
+	if status != InNormal {
+		sdb := db.sdbs[1]
+		sdb.setDeleted(key)
+	}
+	sdb := db.sdbs[0]
+	sdb.setDeleted(key)
+	return
 }
 
 func (db *DB) Expire(key string) time.Duration {
-	sdb, _, ok := db.findForRead(key)
-	if ok {
-		return sdb.expire(key)
-	}
-	return -1
-}
-
-func (db *DB) DelKey(key string) {
-	_, robj, ok := db.findForWrite(key)
-	if ok {
-		if db.state == InPersistState {
-			robj.SetDeleted(true)
-		} else {
-			sdb := db.sdbs[0]
-			sdb.delKey(key)
+	status := db.status.Load()
+	if status != InNormal {
+		sdb := db.sdbs[1]
+		if expire := sdb.expire(key); expire != -1 {
+			return expire
 		}
 	}
+	sdb := db.sdbs[0]
+	return sdb.expire(key)
 }
 
 func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
@@ -181,25 +143,31 @@ func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 	return
 }
 
-func (db *DB) SetState(state uint8) {
-	db.state = state
+func (db *DB) SetStatus(s int32) {
+	db.status.Store(s)
 }
 
-func (db *DB) InNormalState() bool {
-	return db.state == InNormalState
+func (db *DB) InNormalStatus() bool {
+	return db.isThatStatus(InNormal)
 }
 
-const dbMergeBatchNum = 65525
+func (db *DB) InMergeStatus() bool {
+	return db.isThatStatus(InMerge)
+}
+
+func (db *DB) isThatStatus(s int32) bool {
+	return db.status.Load() == s
+}
+
+const dbMergeBatchNum = 1024
 
 func (db *DB) MergeIfNeeded(timeout time.Duration) error {
-	if db.state != InMergeState {
-		return nil
-	}
 	start := time.Now()
 	cnt := 0
+
 	for {
 		if db.sdbs[1].slen == 0 {
-			db.state = InNormalState
+			db.status.Store(InNormal)
 			slog.Info("the merge of DB has finished")
 			break
 		}
@@ -214,9 +182,13 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 		for e := range db.sdbs[1].Iterator() {
 			k, v := e.Key, e.Val
 			if !v.Deleted() {
-				db.sdbs[0].setKey(k, v)
+				db.sdbs[0].set(-1, k, v)
+			} else {
+				if v := db.sdbs[0].get(k); v != nil && v.Deleted() {
+					db.sdbs[0].del(k)
+				}
 			}
-			db.sdbs[1].delKey(k)
+			db.sdbs[1].del(k)
 			num++
 			if num == dbMergeBatchNum {
 				break
@@ -227,16 +199,21 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 	return nil
 }
 
-func (db *DB) Iterator() <-chan DBEntry {
-	// The data is always in Database 0.
-	return db.sdbs[0].Iterator()
+type IterCallback func(context.Context, DBEntry) error
+
+// Iter iterate db while calling cb for every entry.
+func (db *DB) Iter(ctx context.Context, cb IterCallback, mode int) error {
+	for e := range db.sdbs[0].Iterator() {
+		if err := cb(ctx, e); err != nil {
+			return err
+		}
+	}
+	return nil
 }
 
 func (db *DB) Empty() int {
-	if db.state != InNormalState {
-		slog.Warn("db is not in normal state while empty db is not allowed")
-		return 0
-	}
-	_ = db.sdbs[0].expires.Empty()
-	return db.sdbs[0].dict.Empty()
+	db.status.Store(InNormal)
+	n := db.sdbs[0].empty()
+	m := db.sdbs[1].empty()
+	return n + m
 }

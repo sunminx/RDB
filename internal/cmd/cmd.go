@@ -1,8 +1,6 @@
 package cmd
 
 import (
-	"time"
-
 	obj "github.com/sunminx/RDB/internal/object"
 )
 
@@ -17,11 +15,9 @@ type client interface {
 	Multi() bool
 	SetMulti()
 	MultiExec()
-	LookupKeyRead(string) (*obj.Robj, bool)
-	LookupKeyWrite(string) (*obj.Robj, bool)
-	SetKey(string, *obj.Robj)
-	SetExpire(string, time.Duration)
-	DelKey(string)
+	Get(string) (*obj.Robj, bool)
+	Set(int64, string, *obj.Robj)
+	Del(string)
 	Empty() int
 	AddDirty(int)
 	AddReply(*obj.Robj)

@@ -10,8 +10,8 @@ import (
 )
 
 func GetCommand(cli client) bool {
-	robj, ok := cli.LookupKeyRead(cli.Key())
-	if !ok || robj.Deleted() {
+	robj, ok := cli.Get(cli.Key())
+	if !ok {
 		cli.AddReplyRaw(common.Shared["nullbulk"])
 		return OK
 	}
@@ -43,7 +43,7 @@ func SetexCommand(cli client) bool {
 
 func AppendCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
-	val, ok := cli.LookupKeyRead(key)
+	val, ok := cli.Get(key)
 	if !ok {
 		_ = setGenericCommand(cli, key, argv[2], nil)
 		return OK
@@ -61,7 +61,7 @@ func AppendCommand(cli client) bool {
 }
 
 func setGenericCommand(cli client, key string, val, expire []byte) bool {
-	var milliseconds int64
+	milliseconds := int64(-1)
 	if expire != nil {
 		var err error
 		milliseconds, err = strconv.ParseInt(string(expire), 10, 64)
@@ -72,18 +72,19 @@ func setGenericCommand(cli client, key string, val, expire []byte) bool {
 		milliseconds *= 1000
 	}
 
-	cli.SetKey(key, sds.NewRobj(val))
 	if milliseconds > 0 {
 		now := time.Now().UnixMilli()
-		cli.SetExpire(key, time.Duration(now+milliseconds))
+		milliseconds += now
 	}
+
+	cli.Set(milliseconds, key, sds.NewRobj(val))
 	cli.AddDirty(1)
 	return OK
 }
 
 func StrlenCommand(cli client) bool {
 	key := cli.Key()
-	val, ok := cli.LookupKeyRead(key)
+	val, ok := cli.Get(key)
 	if !ok {
 		cli.AddReplyRaw(common.Shared["czero"])
 		return OK
@@ -100,7 +101,7 @@ func DelCommand(cli client) bool {
 	var numdel int64
 	argv := cli.Argv()
 	for i := 1; i < len(argv); i++ {
-		cli.DelKey(string(argv[i]))
+		cli.Del(string(argv[i]))
 		numdel += 1
 	}
 	cli.AddReplyInt64(numdel)
@@ -112,7 +113,7 @@ func ExistsCommand(cli client) bool {
 	var numexists int64
 	argv := cli.Argv()
 	for i := 1; i < len(argv); i++ {
-		if _, ok := cli.LookupKeyRead(string(argv[i])); ok {
+		if _, ok := cli.Get(string(argv[i])); ok {
 			numexists += 1
 		}
 	}
@@ -130,7 +131,7 @@ func DecrCommand(cli client) bool {
 }
 
 func incrdecrCommand(cli client, key string, n int64) bool {
-	val, ok := cli.LookupKeyWrite(key)
+	val, ok := cli.Get(key)
 	if !ok || !val.CheckType(obj.TypeString) {
 		cli.AddReplyError(common.Shared["wrongtypeerr"])
 		return ERR
