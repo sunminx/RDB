@@ -179,6 +179,7 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 		}
 
 		num := 0
+		dels := make([]string, 0)
 		for e := range db.sdbs[1].Iterator() {
 			k, v := e.Key, e.Val
 			if !v.Deleted() {
@@ -188,11 +189,14 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 					db.sdbs[0].del(k)
 				}
 			}
-			db.sdbs[1].del(k)
+			dels = append(dels, k)
 			num++
 			if num == dbMergeBatchNum {
 				break
 			}
+		}
+		for _, k := range dels {
+			db.sdbs[1].del(k)
 		}
 		cnt += num
 	}

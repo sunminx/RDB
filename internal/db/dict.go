@@ -34,7 +34,7 @@ func (e *Entry) TimeDurationVal() time.Duration {
 func (d *MapDict) Set(key string, val *obj.Robj) bool {
 	_, ok := d.dict[key]
 	d.dict[key] = val
-	return ok
+	return !ok
 }
 
 func (d *MapDict) Add(key string, val *obj.Robj) bool {
