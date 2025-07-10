@@ -5,7 +5,6 @@ import (
 	"slices"
 	"strconv"
 	"strings"
-	"sync"
 
 	"github.com/panjf2000/gnet/v2"
 	"github.com/sunminx/RDB/internal/cmd"
@@ -62,7 +61,6 @@ type Client struct {
 	multiState      *multiState
 	reply           []byte
 	lastInteraction int64
-	cmdLock         *sync.RWMutex
 	state           int
 }
 
@@ -426,11 +424,6 @@ func (c *Client) MultiExec() {
 }
 
 func (c *Client) call() bool {
-	if !c.cmdLock.TryLock() {
-		c.flag |= queueCall
-		c.Server.RunnableClientCh <- c
-		return nonExec
-	}
 
 	dirty := c.Server.Dirty
 	_ = c.cmd.Proc(c)
@@ -441,8 +434,6 @@ func (c *Client) call() bool {
 	}
 
 	c.flag &= ^queueCall
-	c.cmdLock.Unlock()
-	c.Server.UnlockNotice <- struct{}{}
 	return execed
 }
 

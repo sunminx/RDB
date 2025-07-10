@@ -46,7 +46,6 @@ type Server struct {
 	Version                string
 	MasterReplOffset       int64
 	RunnableClientCh       chan *Client
-	CmdLock                *sync.RWMutex
 	UnlockNotice           chan struct{}
 	RdbVersion             int
 	RdbFilename            string
@@ -169,7 +168,6 @@ func (s *Server) OnOpen(conn gnet.Conn) (out []byte, action gnet.Action) {
 
 	cli := NewClient(conn, s.DB)
 	cli.Server = s
-	cli.cmdLock = s.CmdLock
 	cli.lastInteraction = time.Now().UnixMilli()
 	s.Clients[fd] = cli
 	return nil, gnet.None
@@ -344,7 +342,6 @@ func initClients(n int) []*Client {
 // Init is used to initialize partial field of server.
 func (s *Server) Init() {
 	s.cmds = cmd.CommandTable
-	s.CmdLock = &sync.RWMutex{}
 	s.UnlockNotice = make(chan struct{})
 	s.RunnableClientCh = make(chan *Client, 1024)
 	s.BackgroundDoneChan = make(chan uint8, 1)
@@ -354,18 +351,18 @@ func (s *Server) Init() {
 	// Receive the message that the lock of command execution is released.
 	// check if there are any clients currently blocking and waiting to execute command,
 	// and wake up the client that is blocking and waiting first.
-	go func() {
-		for {
-			select {
-			case <-s.UnlockNotice:
-				select {
-				case rcmd := <-s.RunnableClientCh:
-					rcmd.Wake()
-				default:
-				}
-			}
-		}
-	}()
+	//go func() {
+	//	for {
+	//		select {
+	//		case <-s.UnlockNotice:
+	//			select {
+	//			case rcmd := <-s.RunnableClientCh:
+	//				rcmd.Wake()
+	//			default:
+	//			}
+	//		}
+	//	}
+	//}()
 }
 
 // LoadDataFromDisk rebuild DB by load RDB or AOF file during the server startup.
@@ -493,9 +490,8 @@ func (s *Server) cron() {
 	}
 
 	// After the db persistence is completed, move the key-val pair in sdbs[1] step by step to sdbs[0].
-	if s.DB.InMergeStatus() && TryLockWithTimeout(s.CmdLock, 20*time.Millisecond) {
+	if s.DB.InMergeStatus() {
 		_ = s.DB.MergeIfNeeded(100 * time.Millisecond)
-		s.CmdLock.Unlock()
 	}
 
 	if s.AofState != AofOff {

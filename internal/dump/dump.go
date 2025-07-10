@@ -11,7 +11,6 @@ import (
 
 	"github.com/sunminx/RDB/internal/db"
 	"github.com/sunminx/RDB/internal/networking"
-	. "github.com/sunminx/RDB/pkg/util"
 )
 
 const (
@@ -21,11 +20,7 @@ const (
 	nosave = false
 )
 
-type Dumper struct {
-	// waitResetDBState indicates that both persistence and done-handler of persistence
-	// have been completed, and it is waiting to reset the persisting state of DB.
-	waitResetDBState bool
-}
+type Dumper struct{}
 
 const (
 	waiting = true
@@ -33,7 +28,7 @@ const (
 )
 
 func New() Dumper {
-	return Dumper{waitResetDBState: notWait}
+	return Dumper{}
 }
 
 var errContextCanceled = errors.New("quit because of cancel signal")
@@ -71,13 +66,7 @@ func (d Dumper) RdbSaveBackground(server *networking.Server) bool {
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
 	}
-	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
-	if !locked {
-		slog.Warn("exit bgsave RDB file because of db can't locked")
-		return nosave
-	}
 	server.DB.SetStatus(db.InPersist)
-	server.CmdLock.Unlock()
 	now := time.Now()
 	go d.RdbSave(server)
 	slog.Info("background saving started")
@@ -140,24 +129,16 @@ func newRdberInfo(server *networking.Server) rdberInfo {
 }
 
 func (d Dumper) RdbSaveBackgroundDoneHandler(server *networking.Server) {
-	if d.waitResetDBState {
-		switch server.RdbChildType {
-		case rdbChildTypeDisk:
-			rdbBgsaveDoneHandlerDisk(server)
-		default:
-		}
+	switch server.RdbChildType {
+	case rdbChildTypeDisk:
+		rdbBgsaveDoneHandlerDisk(server)
+	default:
 	}
-	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
-	if !locked {
-		d.waitResetDBState = waiting
-		return
-	}
-	d.waitResetDBState = notWait
+
 	server.DB.SetStatus(db.InMerge)
 	server.LastSave = time.Now().UnixMilli()
 	server.Dirty -= server.DirtyBeforeBgsave
 	server.RdbChildRunning.Store(networking.ChildNotInRunning)
-	server.CmdLock.Unlock()
 }
 
 func rdbBgsaveDoneHandlerDisk(server *networking.Server) {
@@ -312,13 +293,8 @@ func (Dumper) AofRewriteBackground(server *networking.Server) bool {
 		networking.ChildNotInRunning, networking.ChildInRunning) {
 		return nosave
 	}
-	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
-	if !locked {
-		slog.Warn("exit rewrite AOF file because of db can't locked")
-		return false
-	}
+
 	server.DB.SetStatus(db.InPersist)
-	server.CmdLock.Unlock()
 	now := time.Now()
 	go aofRewrite("", server)
 	slog.Info("background saving started")
@@ -374,79 +350,70 @@ func aofRewrite(filepath string, server *networking.Server) bool {
 }
 
 func (d Dumper) AofRewriteBackgroundDoneHandler(server *networking.Server) {
-	if !d.waitResetDBState {
-		filepath := makePath(
-			server.AofDirname,
-			aofManifestFilename(server.AofFilename),
-		)
-		file, err := os.Open(filepath)
-		if err != nil {
-			slog.Warn("failed open AOF manifest file",
-				"filepath", filepath, "err", err)
-		}
-		defer file.Close()
-
-		am, err := createAofManifest(file)
-		if err != nil {
-			slog.Warn("failed create aofManifest instance", "err", err)
-			return
-		}
-
-		tempBaseFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
-		baseFilename := am.nextBaseAofName(server)
-		baseFilepath := makePath(server.AofDirname, baseFilename)
-		if err := os.Rename(tempBaseFilename, baseFilepath); err != nil {
-			slog.Warn("failed trying to rename temporary AOF base file", "err", err)
-			return
-		}
-
-		baseFile, err := os.Open(baseFilepath)
-		if err != nil {
-			slog.Warn("can't open AOF base file for refresh rewrite_base_size", "err", err)
-		} else {
-			baseFileInfo, err := baseFile.Stat()
-			if err != nil {
-				slog.Warn("can't call to stat function on AOF base file for refresh rewrite_base_size",
-					"err", err)
-			} else {
-				server.AofRewriteBaseSize = baseFileInfo.Size()
-				server.AofCurrSize = baseFileInfo.Size()
-			}
-			baseFile.Close()
-		}
-
-		if server.AofState == networking.AofWaitRewrite {
-			tempIncrFilename := tempIncrAofName(server.AofFilename)
-			incrFilename := am.nextIncrAofName(server)
-			if err := os.Rename(
-				makePath(server.AofDirname, tempIncrFilename),
-				makePath(server.AofDirname, incrFilename)); err != nil {
-				slog.Warn("failed trying to rename tempory AOF incr file", "err", err)
-				return
-			}
-
-		}
-
-		am.moveIncrAofToHist()
-
-		am.deleteAofHistFiles(server)
-
-		if err := am.persist(server); err != nil {
-			slog.Warn("failed persist new AOF manifest file", "err", err)
-			return
-		}
+	filepath := makePath(
+		server.AofDirname,
+		aofManifestFilename(server.AofFilename),
+	)
+	file, err := os.Open(filepath)
+	if err != nil {
+		slog.Warn("failed open AOF manifest file",
+			"filepath", filepath, "err", err)
 	}
+	defer file.Close()
 
-	locked := TryLockWithTimeout(server.CmdLock, 100*time.Millisecond)
-	if !locked {
-		d.waitResetDBState = waiting
+	am, err := createAofManifest(file)
+	if err != nil {
+		slog.Warn("failed create aofManifest instance", "err", err)
 		return
 	}
-	d.waitResetDBState = notWait
+
+	tempBaseFilename := fmt.Sprintf("temp-rewriteaof-%d.aof", os.Getpid())
+	baseFilename := am.nextBaseAofName(server)
+	baseFilepath := makePath(server.AofDirname, baseFilename)
+	if err := os.Rename(tempBaseFilename, baseFilepath); err != nil {
+		slog.Warn("failed trying to rename temporary AOF base file", "err", err)
+		return
+	}
+
+	baseFile, err := os.Open(baseFilepath)
+	if err != nil {
+		slog.Warn("can't open AOF base file for refresh rewrite_base_size", "err", err)
+	} else {
+		baseFileInfo, err := baseFile.Stat()
+		if err != nil {
+			slog.Warn("can't call to stat function on AOF base file for refresh rewrite_base_size",
+				"err", err)
+		} else {
+			server.AofRewriteBaseSize = baseFileInfo.Size()
+			server.AofCurrSize = baseFileInfo.Size()
+		}
+		baseFile.Close()
+	}
+
+	if server.AofState == networking.AofWaitRewrite {
+		tempIncrFilename := tempIncrAofName(server.AofFilename)
+		incrFilename := am.nextIncrAofName(server)
+		if err := os.Rename(
+			makePath(server.AofDirname, tempIncrFilename),
+			makePath(server.AofDirname, incrFilename)); err != nil {
+			slog.Warn("failed trying to rename tempory AOF incr file", "err", err)
+			return
+		}
+
+	}
+
+	am.moveIncrAofToHist()
+
+	am.deleteAofHistFiles(server)
+
+	if err := am.persist(server); err != nil {
+		slog.Warn("failed persist new AOF manifest file", "err", err)
+		return
+	}
+
 	server.DB.SetStatus(db.InMerge)
 	server.AofChildRunning.Store(networking.ChildNotInRunning)
 	slog.Info("Background AOF rewrite signal handler done")
-	server.CmdLock.Unlock()
 }
 
 func (Dumper) AofOpenOnServerStart(server *networking.Server) {

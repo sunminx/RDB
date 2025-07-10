@@ -132,11 +132,9 @@ type DBEntry struct {
 }
 
 func (sdb *sdb) Iterator() <-chan DBEntry {
-	sdb.RLock()
 	ch := make(chan DBEntry)
 	go func() {
 		defer close(ch)
-		defer sdb.RUnlock()
 		for entry := range sdb.dict.Iterator() {
 			dbEntry := DBEntry{entry, -1}
 			v, ok := sdb.expires.FetchValue(entry.Key)
