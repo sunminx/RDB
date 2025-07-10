@@ -216,8 +216,8 @@ func (db *DB) Iter(ctx context.Context, cb IterCallback, mode int) error {
 }
 
 func (db *DB) Empty() int {
-	db.status.Store(InNormal)
 	n := db.sdbs[0].empty()
 	m := db.sdbs[1].empty()
+	db.status.Store(InNormal)
 	return n + m
 }

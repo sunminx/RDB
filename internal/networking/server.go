@@ -88,6 +88,8 @@ type Server struct {
 	// status indicates what status the server is in.
 	status serverStatus
 
+	elInited atomic.Bool
+
 	// el is the eventLoop which can used to push cron to task queue.
 	el gnet.EventLoop
 
@@ -181,6 +183,7 @@ func (s *Server) initCronRunner(el gnet.EventLoop) {
 		runner := CronRunner{server: s}
 		s.el = el
 		s.runner = &runner
+		s.elInited.Store(true)
 	})
 }
 
@@ -205,6 +208,12 @@ func (s *Server) OnTraffic(conn gnet.Conn) gnet.Action {
 }
 
 func (s *Server) OnTick() (time.Duration, gnet.Action) {
+	if s.elInited.Load() == false {
+		goto ret
+	}
+	//if s.elInited.Load() == false {
+	//	goto ret
+	//}
 	// When at least one client is connected, the cron are registered
 	// in the task queue of the EventLoop, and the scheduled tasks
 	// are executed after each loop of network event is completed.
@@ -219,6 +228,7 @@ func (s *Server) OnTick() (time.Duration, gnet.Action) {
 	if s.status == terminated {
 		return time.Second, gnet.Shutdown
 	}
+ret:
 	// This interval determines the frequency at which cron is added
 	// to the task queue of the EventLoop.
 	// Polling network event in gnet is non-blocking.
@@ -339,6 +349,7 @@ func (s *Server) Init() {
 	s.RunnableClientCh = make(chan *Client, 1024)
 	s.BackgroundDoneChan = make(chan uint8, 1)
 	s.status = running
+	s.elInited = atomic.Bool{}
 
 	// Receive the message that the lock of command execution is released.
 	// check if there are any clients currently blocking and waiting to execute command,
