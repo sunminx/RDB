@@ -27,7 +27,7 @@ func pushGenericCommand(cli client, where int8) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeList) {
-			cli.AddReplyError(common.Shared["wrongtypeerr"])
+			cli.AddReplyError(common.Reply["wrongtypeerr"])
 			return ERR
 		}
 	} else {
@@ -63,10 +63,10 @@ func popGenericCommand(cli client, where int8) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 
@@ -80,7 +80,7 @@ func popGenericCommand(cli client, where int8) bool {
 		robj := sds.NewRobj(entries[0])
 		cli.AddReplyBulk(robj)
 	} else {
-		cli.AddReplyRaw(common.Shared["bullbulk"])
+		cli.AddReplyRaw(common.Reply["bullbulk"])
 	}
 	cli.AddDirty(1)
 	return OK
@@ -90,16 +90,16 @@ func LIndexCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 
 	idx, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Shared["invalidindex"])
+		cli.AddReplyError(common.Reply["invalidindex"])
 		return ERR
 	}
 	entry, ok := list.Index(val, idx)
@@ -115,10 +115,10 @@ func LLenCommand(cli client) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 	llen := list.Cnt(val)
@@ -130,10 +130,10 @@ func LTrimCommand(cli client) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 
@@ -141,16 +141,16 @@ func LTrimCommand(cli client) bool {
 
 	start, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Shared["invalidindex"])
+		cli.AddReplyError(common.Reply["invalidindex"])
 		return ERR
 	}
 	end, err := strconv.ParseUint(string(argv[3]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Shared["invalidindex"])
+		cli.AddReplyError(common.Reply["invalidindex"])
 		return ERR
 	}
 	list.Trim(val, start, end)
-	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddReplyStatus(common.Reply["ok"])
 	return OK
 }
 
@@ -158,10 +158,10 @@ func LSetCommand(cli client) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 
@@ -169,11 +169,11 @@ func LSetCommand(cli client) bool {
 
 	index, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Shared["invalidindex"])
+		cli.AddReplyError(common.Reply["invalidindex"])
 		return ERR
 	}
 
 	list.Set(val, index-1, argv[3])
-	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddReplyStatus(common.Reply["ok"])
 	return OK
 }

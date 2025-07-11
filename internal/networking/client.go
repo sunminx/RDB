@@ -526,9 +526,9 @@ func (c *Client) AddReplyStatus(status []byte) {
 // AddReplyInt64 output a signed, base-10, 64-bit integer to client. eg: ":0\r\n".
 func (c *Client) AddReplyInt64(n int64) {
 	if n == 0 {
-		c.AddReplyRaw(common.Shared["czero"])
+		c.AddReplyRaw(common.Reply["czero"])
 	} else if n == 1 {
-		c.AddReplyRaw(common.Shared["cone"])
+		c.AddReplyRaw(common.Reply["cone"])
 	} else {
 		s := ":" + strconv.FormatInt(n, 10) + "\r\n"
 		c.AddReplyRaw([]byte(s))
@@ -537,9 +537,9 @@ func (c *Client) AddReplyInt64(n int64) {
 
 func (c *Client) AddReplyUint64(n uint64) {
 	if n == 0 {
-		c.AddReplyRaw(common.Shared["czero"])
+		c.AddReplyRaw(common.Reply["czero"])
 	} else if n == 1 {
-		c.AddReplyRaw(common.Shared["cone"])
+		c.AddReplyRaw(common.Reply["cone"])
 	} else {
 		s := ":" + strconv.FormatUint(n, 10) + "\r\n"
 		c.AddReplyRaw([]byte(s))
@@ -568,7 +568,7 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 		c.AddReplyRaw([]byte("$" + strconv.Itoa(ln) + "\r\n"))
 		c.AddReplyRaw([]byte(strconv.FormatInt(val, 10)))
 	}
-	c.AddReplyRaw(common.Shared["crlf"])
+	c.AddReplyRaw(common.Reply["crlf"])
 }
 
 // AddReplyMultibulk output arrays to client. eg: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n".

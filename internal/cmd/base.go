@@ -21,7 +21,7 @@ func MultiCommand(cli client) bool {
 		return ERR
 	}
 	cli.SetMulti()
-	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddReplyStatus(common.Reply["ok"])
 	return OK
 }
 
@@ -36,6 +36,6 @@ func ExecCommand(cli client) bool {
 
 func FlushAllCommand(cli client) bool {
 	_ = cli.Empty()
-	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddReplyStatus(common.Reply["ok"])
 	return OK
 }

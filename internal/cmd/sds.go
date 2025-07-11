@@ -12,12 +12,12 @@ import (
 func GetCommand(cli client) bool {
 	robj, ok := cli.Get(cli.Key())
 	if !ok {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return OK
 	}
 
 	if robj.Type() != obj.TypeString {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 
@@ -30,7 +30,7 @@ func SetCommand(cli client) bool {
 	for i := 2; i < len(argv); i++ {
 		_ = setGenericCommand(cli, objSetNoFlag, key, argv[i], nil)
 	}
-	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddReplyStatus(common.Reply["ok"])
 	return OK
 }
 
@@ -38,9 +38,9 @@ func SetNxCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	ok := setGenericCommand(cli, objSetNx, key, argv[2], nil)
 	if !ok {
-		cli.AddReplyRaw(common.Shared["czero"])
+		cli.AddReplyRaw(common.Reply["czero"])
 	} else {
-		cli.AddReplyStatus(common.Shared["ok"])
+		cli.AddReplyStatus(common.Reply["ok"])
 	}
 	return OK
 }
@@ -48,7 +48,7 @@ func SetNxCommand(cli client) bool {
 func SetexCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	_ = setGenericCommand(cli, objSetNoFlag, key, argv[3], argv[2])
-	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddReplyStatus(common.Reply["ok"])
 	return OK
 }
 
@@ -60,7 +60,7 @@ func AppendCommand(cli client) bool {
 		return OK
 	}
 	if !val.CheckType(obj.TypeString) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 
@@ -108,11 +108,11 @@ func StrlenCommand(cli client) bool {
 	key := cli.Key()
 	val, ok := cli.Get(key)
 	if !ok {
-		cli.AddReplyRaw(common.Shared["czero"])
+		cli.AddReplyRaw(common.Reply["czero"])
 		return OK
 	}
 	if !val.CheckType(obj.TypeString) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return OK
 	}
 	cli.AddReplyInt64(sds.Len(val))
@@ -155,7 +155,7 @@ func DecrCommand(cli client) bool {
 func incrdecrCommand(cli client, key string, n int64) bool {
 	val, ok := cli.Get(key)
 	if !ok || !val.CheckType(obj.TypeString) {
-		cli.AddReplyError(common.Shared["wrongtypeerr"])
+		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
 	cli.AddReplyInt64(sds.Incr(val, n))

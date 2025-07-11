@@ -20,7 +20,7 @@ func genericHSetCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Shared["wrongtypeerr"])
+			cli.AddReplyError(common.Reply["wrongtypeerr"])
 			return ERR
 		}
 	} else {
@@ -34,7 +34,7 @@ func genericHSetCommand(cli client) bool {
 	}
 
 	cli.Set(-1, key, val)
-	cli.AddReplyStatus(common.Shared["ok"])
+	cli.AddReplyStatus(common.Reply["ok"])
 	cli.AddDirty(setedNum)
 	return OK
 }
@@ -44,11 +44,11 @@ func HGetCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Shared["wrongtypeerr"])
+			cli.AddReplyError(common.Reply["wrongtypeerr"])
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	}
 
@@ -64,11 +64,11 @@ func HDelCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Shared["wrongtypeerr"])
+			cli.AddReplyError(common.Reply["wrongtypeerr"])
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	}
 
@@ -87,11 +87,11 @@ func HLenCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Shared["wrongtypeerr"])
+			cli.AddReplyError(common.Reply["wrongtypeerr"])
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	}
 
@@ -104,18 +104,18 @@ func HExistsCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Shared["wrongtypeerr"])
+			cli.AddReplyError(common.Reply["wrongtypeerr"])
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Shared["nullbulk"])
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return ERR
 	}
 
 	if hash.Exists(val, argv[2]) {
-		cli.AddReplyRaw(common.Shared["cone"])
+		cli.AddReplyRaw(common.Reply["cone"])
 	} else {
-		cli.AddReplyRaw(common.Shared["czero"])
+		cli.AddReplyRaw(common.Reply["czero"])
 	}
 	return OK
 }
