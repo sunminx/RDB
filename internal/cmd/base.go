@@ -39,3 +39,8 @@ func FlushAllCommand(cli client) bool {
 	cli.AddReplyStatus(common.Reply["ok"])
 	return OK
 }
+
+func DbSizeCommand(cli client) bool {
+	cli.AddReplyInt64(cli.Size())
+	return OK
+}

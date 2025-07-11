@@ -57,6 +57,10 @@ func deepcopy(val *obj.Robj) *obj.Robj {
 	}
 }
 
+func (db *DB) Size() int64 {
+	return int64(db.sdbs[0].slen) + int64(db.sdbs[1].slen)
+}
+
 func (db *DB) Get(key string) (*obj.Robj, bool) {
 	status := db.status.Load()
 	if status != InNormal {
@@ -86,14 +90,28 @@ func (db *DB) Set(expire int64, key string, val *obj.Robj) {
 	return
 }
 
+// Del delete target val indicate by key.
+// In Normal state (No background persistent or DB merge), what we want to do is just delete val in No.0 sdb.
+// In Persist state, a background groutine is iterate No.0 sdb, so we can only make 'delete' flag.
+// In Merge state, there maybe different versions of same key in No.0 sdb and No.1 sdb, so we try to delete both of them.
 func (db *DB) Del(key string) {
 	status := db.status.Load()
-	if status != InNormal {
-		sdb := db.sdbs[1]
+	switch status {
+	case InNormal:
+		sdb := db.sdbs[0]
+		sdb.del(key)
+	case InPersist:
+		sdb := db.sdbs[0]
 		sdb.setDeleted(key)
+		sdb = db.sdbs[1]
+		sdb.del(key)
+	case InMerge:
+		sdb := db.sdbs[0]
+		sdb.del(key)
+		sdb = db.sdbs[1]
+		sdb.del(key)
+	default:
 	}
-	sdb := db.sdbs[0]
-	sdb.setDeleted(key)
 	return
 }
 
@@ -180,7 +198,9 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 
 		num := 0
 		dels := make([]string, 0)
-		for e := range db.sdbs[1].Iterator() {
+
+		ctx, cancel := context.WithCancel(context.TODO())
+		for e := range db.sdbs[1].Iterator(ctx) {
 			k, v := e.Key, e.Val
 			if !v.Deleted() {
 				db.sdbs[0].set(-1, k, v)
@@ -195,6 +215,10 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 				break
 			}
 		}
+
+		// Notify sdb to stop pushing entry.
+		cancel()
+
 		for _, k := range dels {
 			db.sdbs[1].del(k)
 		}
@@ -207,7 +231,7 @@ type IterCallback func(context.Context, DBEntry) error
 
 // Iter iterate db while calling cb for every entry.
 func (db *DB) Iter(ctx context.Context, cb IterCallback, mode int) error {
-	for e := range db.sdbs[0].Iterator() {
+	for e := range db.sdbs[0].Iterator(context.Background()) {
 		if err := cb(ctx, e); err != nil {
 			return err
 		}

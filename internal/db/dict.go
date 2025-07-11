@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"crypto/rand"
 	"encoding/binary"
 	"time"
@@ -100,11 +101,16 @@ func (d *MapDict) Size() int {
 	return 0
 }
 
-func (d *MapDict) Iterator() <-chan *Entry {
+func (d *MapDict) Iterator(ctx context.Context) <-chan *Entry {
 	ch := make(chan *Entry)
 	go func() {
 		defer close(ch)
 		for k, v := range d.dict {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+			}
 			ch <- &Entry{k, v}
 		}
 	}()

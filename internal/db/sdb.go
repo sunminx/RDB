@@ -1,6 +1,7 @@
 package db
 
 import (
+	"context"
 	"time"
 
 	obj "github.com/sunminx/RDB/internal/object"
@@ -23,7 +24,7 @@ type dictable interface {
 	GetRandomKey() Entry
 	Used() int
 	Size() int
-	Iterator() <-chan *Entry
+	Iterator(context.Context) <-chan *Entry
 	Empty() int
 }
 
@@ -84,6 +85,7 @@ func (sdb *sdb) del(key string) {
 func (sdb *sdb) setDeleted(key string) {
 	val := sdb.get(key)
 	val.SetDeleted(true)
+	sdb.slen--
 }
 
 func (sdb *sdb) empty() int {
@@ -116,11 +118,11 @@ type DBEntry struct {
 	Expire int64
 }
 
-func (sdb *sdb) Iterator() <-chan DBEntry {
+func (sdb *sdb) Iterator(ctx context.Context) <-chan DBEntry {
 	ch := make(chan DBEntry)
 	go func() {
 		defer close(ch)
-		for entry := range sdb.dict.Iterator() {
+		for entry := range sdb.dict.Iterator(ctx) {
 			dbEntry := DBEntry{entry, -1}
 			v, ok := sdb.expires.FetchValue(entry.Key)
 			if ok {

@@ -11,6 +11,12 @@ class TestString(unittest.TestCase):
         self.assertEqual(val, self.cli.get(key))
         self.cli.flushall()
 
+    def test_setgetempty(self):
+        key, val = "x", ""
+        self.cli.set(key, val)
+        self.assertEqual(val, self.cli.get(key))
+        self.cli.flushall()
+
     def test_setdel(self):
         key, val = "y", "barfoo"
         self.cli.set(key, val)
@@ -43,6 +49,8 @@ class TestString(unittest.TestCase):
             self.cli.set(i, i)
         for i in range(9999, -1, -1):
             self.assertEqual(str(i), self.cli.get(i))
+        # check db size before flush
+        self.assertEqual(10000, self.cli.dbsize())
         self.cli.flushall()
 
     def test_append(self):

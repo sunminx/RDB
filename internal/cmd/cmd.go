@@ -15,6 +15,7 @@ type client interface {
 	Multi() bool
 	SetMulti()
 	MultiExec()
+	Size() int64
 	Get(string) (*obj.Robj, bool)
 	Set(int64, string, *obj.Robj)
 	Del(string)
@@ -77,4 +78,5 @@ var CommandTable []Command = []Command{
 	{"exec", ExecCommand, 1, "sM", 0, 0, 0, 0, 0, 0},
 	{"flushdb", FlushAllCommand, -1, "w", 0, 0, 0, 0, 0, 0},
 	{"flushall", FlushAllCommand, -1, "w", 0, 0, 0, 0, 0, 0},
+	{"dbsize", DbSizeCommand, 1, "rF", 0, 0, 0, 0, 0, 0},
 }
