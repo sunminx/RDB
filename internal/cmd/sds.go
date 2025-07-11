@@ -28,15 +28,26 @@ func GetCommand(cli client) bool {
 func SetCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	for i := 2; i < len(argv); i++ {
-		_ = setGenericCommand(cli, key, argv[i], nil)
+		_ = setGenericCommand(cli, objSetNoFlag, key, argv[i], nil)
 	}
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
 
+func SetNxCommand(cli client) bool {
+	key, argv := cli.Key(), cli.Argv()
+	ok := setGenericCommand(cli, objSetNx, key, argv[2], nil)
+	if !ok {
+		cli.AddReplyRaw(common.Shared["czero"])
+	} else {
+		cli.AddReplyStatus(common.Shared["ok"])
+	}
+	return OK
+}
+
 func SetexCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
-	_ = setGenericCommand(cli, key, argv[3], argv[2])
+	_ = setGenericCommand(cli, objSetNoFlag, key, argv[3], argv[2])
 	cli.AddReplyStatus(common.Shared["ok"])
 	return OK
 }
@@ -45,7 +56,7 @@ func AppendCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	val, ok := cli.Get(key)
 	if !ok {
-		_ = setGenericCommand(cli, key, argv[2], nil)
+		_ = setGenericCommand(cli, objSetNoFlag, key, argv[2], nil)
 		return OK
 	}
 	if !val.CheckType(obj.TypeString) {
@@ -54,20 +65,27 @@ func AppendCommand(cli client) bool {
 	}
 
 	sds.Append(val, argv[2])
-	_ = setGenericCommand(cli, key, val.Val().(sds.SDS), nil)
+	_ = setGenericCommand(cli, objSetNoFlag, key, val.Val().(sds.SDS), nil)
 
 	cli.AddReplyBulk(val)
 	return OK
 }
 
-func setGenericCommand(cli client, key string, val, expire []byte) bool {
+type setFlag int
+
+const (
+	objSetNoFlag setFlag = 0
+	objSetNx             = 1 << iota
+)
+
+func setGenericCommand(cli client, flag setFlag, key string, val, expire []byte) bool {
 	milliseconds := int64(-1)
 	if expire != nil {
 		var err error
 		milliseconds, err = strconv.ParseInt(string(expire), 10, 64)
 		if err != nil {
 			cli.AddReplyErrorFormat(`invalid expire time in %s`, key)
-			return OK
+			return true
 		}
 		milliseconds *= 1000
 	}
@@ -77,9 +95,13 @@ func setGenericCommand(cli client, key string, val, expire []byte) bool {
 		milliseconds += now
 	}
 
+	if _, exists := cli.Get(key); exists && (flag&objSetNx) != 0 {
+		return false
+	}
+
 	cli.Set(milliseconds, key, sds.NewRobj(val))
 	cli.AddDirty(1)
-	return OK
+	return true
 }
 
 func StrlenCommand(cli client) bool {

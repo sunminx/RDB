@@ -51,6 +51,7 @@ var EmptyCommand = Command{"", nil, 0, "", 0, 0, 0, 0, 0, 0}
 var CommandTable []Command = []Command{
 	{"get", GetCommand, 2, "rF", 0, 1, 1, 1, 0, 0},
 	{"set", SetCommand, -3, "wm", 0, 1, 1, 1, 0, 0},
+	{"setnx", SetNxCommand, 3, "wmF", 0, 1, 1, 1, 0, 0},
 	{"del", DelCommand, -2, "w", 0, 1, -1, 1, 0, 0},
 	{"exists", ExistsCommand, -2, "rF", 0, 1, -1, 1, 0, 0},
 	{"incr", IncrCommand, 2, "wmF", 0, 1, 1, 1, 0, 0},
