@@ -93,7 +93,7 @@ func (db *DB) Set(expire int64, key string, val *obj.Robj) {
 // Del delete target val indicate by key.
 // In Normal state (No background persistent or DB merge), what we want to do is just delete val in No.0 sdb.
 // In Persist state, a background groutine is iterate No.0 sdb, so we can only make 'delete' flag.
-// In Merge state, there maybe different versions of same key in No.0 sdb and No.1 sdb, so we try to delete both of them.
+// In Merge state, there maybe different versions of same key in both No.0 sdb and No.1 sdb, so we try to delete both of them.
 func (db *DB) Del(key string) {
 	status := db.status.Load()
 	switch status {
