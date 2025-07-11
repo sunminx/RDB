@@ -53,6 +53,28 @@ class TestString(unittest.TestCase):
         self.assertEqual(10000, self.cli.dbsize())
         self.cli.flushall()
 
+    def test_setnxkeymissing(self):
+        key, val = "novar", "foobared"
+        self.cli.del(key)
+        self.assertEqual(1, self.cli.setnx(key, val))
+        self.assertEqual(val, self.cli.get(key))
+        self.cli.flushall()
+
+    def test_setnxkeyexists(self):
+        key, val = "novar", "foobared"
+        self.cli.set(key)
+        self.assertEqual(1, self.cli.setnx(key, val))
+        self.assertEqual(val, self.cli.get(key))
+        self.cli.flushall()
+
+    def test_setnxnotexpiredkey(self):
+        key, val = "x", 10
+        self.cli.set(key, val)
+        self.cli.expire(key, 10000)
+        self.assertEqual(0, self.cli.setnx(key, key, 20))
+        self.assertEqual(10, self.cli.get(key))
+        self.cli.flushall()
+
     def test_append(self):
         key, val = "x", "foo"
         self.cli.set(key, val)

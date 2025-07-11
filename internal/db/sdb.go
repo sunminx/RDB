@@ -43,12 +43,12 @@ func (sdb *sdb) get(key string) *obj.Robj {
 	return o
 }
 
-func (sdb *sdb) expire(key string) time.Duration {
+func (sdb *sdb) expire(key string) int64 {
 	e, ok := sdb.expires.FetchValue(key)
 	if !ok {
 		return -1
 	}
-	return time.Duration(e.Val().(int64))
+	return e.Val().(int64)
 }
 
 func (sdb *sdb) keyIsExpired(key string) bool {
@@ -57,20 +57,29 @@ func (sdb *sdb) keyIsExpired(key string) bool {
 		return false
 	}
 	expire, _ := v.Val().(int64)
-	return (time.Now().UnixMilli() - expire) > 0
+	return time.Now().UnixMilli()-expire > 0
 }
 
-func (sdb *sdb) set(expire int64, key string, val *obj.Robj) {
-	sds.TryObjectEncoding(val)
-
-	added := sdb.dict.Set(key, val)
-	if added {
-		sdb.slen++
+func (sdb *sdb) set(expire int64, key string, val *obj.Robj) bool {
+	// Check timestamp if greater than time now.
+	// If not, we should delete key instantly.
+	if time.Now().UnixMilli()-expire > 0 {
+		sdb.dict.Del(key)
+		return false
 	}
-	if expire > 0 {
+
+	if val != nil {
+		sds.TryObjectEncoding(val)
+		added := sdb.dict.Set(key, val)
+		if added {
+			sdb.slen++
+		}
+	}
+
+	if expire != -1 {
 		_ = sdb.expires.Set(key, sds.NewRobj(expire))
 	}
-	return
+	return true
 }
 
 func (sdb *sdb) del(key string) {

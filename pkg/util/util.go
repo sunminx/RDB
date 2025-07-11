@@ -6,7 +6,7 @@ import (
 	"time"
 )
 
-func Cond[T byte | uint16 | int32 | uint32 | int | int64 | uint64 | string](expr bool, t, f T) T {
+func Cond[T byte | uint16 | int32 | uint32 | int | int64 | uint64 | string | time.Time](expr bool, t, f T) T {
 	if expr {
 		return t
 	}

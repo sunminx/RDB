@@ -206,7 +206,7 @@ loop:
 			if expireTime != -1 && expireTime < now {
 				continue
 			}
-			rdb.db.Set(expireTime, key, val)
+			rdb.db.Set(time.Duration(expireTime), key, val)
 			expireTime = -1
 		}
 	}

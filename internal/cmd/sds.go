@@ -45,7 +45,7 @@ func SetNxCommand(cli client) bool {
 	return OK
 }
 
-func SetexCommand(cli client) bool {
+func SetExCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	_ = setGenericCommand(cli, objSetNoFlag, key, argv[3], argv[2])
 	cli.AddReplyStatus(common.Reply["ok"])
@@ -78,28 +78,27 @@ const (
 	objSetNx             = 1 << iota
 )
 
-func setGenericCommand(cli client, flag setFlag, key string, val, expire []byte) bool {
-	milliseconds := int64(-1)
-	if expire != nil {
+func setGenericCommand(cli client, flag setFlag, key string, val, expireParam []byte) bool {
+	expire := int64(-1)
+	if expireParam != nil {
 		var err error
-		milliseconds, err = strconv.ParseInt(string(expire), 10, 64)
-		if err != nil {
-			cli.AddReplyErrorFormat(`invalid expire time in %s`, key)
+		expire, err = strconv.ParseInt(string(expireParam), 10, 64)
+		if err != nil || expire <= 0 {
+			cli.AddReplyError([]byte("invalid expire param"))
 			return true
 		}
-		milliseconds *= 1000
+		expire *= 1e3
 	}
 
-	if milliseconds > 0 {
-		now := time.Now().UnixMilli()
-		milliseconds += now
+	if expire != -1 {
+		expire += time.Now().UnixMilli()
 	}
 
 	if _, exists := cli.Get(key); exists && (flag&objSetNx) != 0 {
 		return false
 	}
 
-	cli.Set(milliseconds, key, sds.NewRobj(val))
+	cli.Set(time.Duration(expire), key, sds.NewRobj(val))
 	cli.AddDirty(1)
 	return true
 }

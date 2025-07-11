@@ -74,20 +74,18 @@ func (db *DB) Get(key string) (*obj.Robj, bool) {
 	return val, val != nil && !val.Deleted()
 }
 
-func (db *DB) Set(expire int64, key string, val *obj.Robj) {
+func (db *DB) Set(expire time.Duration, key string, val *obj.Robj) bool {
 	status := db.status.Load()
 	if status == InPersist {
 		sdb := db.sdbs[1]
-		sdb.set(expire, key, val)
-		return
+		return sdb.set(int64(expire), key, val)
 	}
 	if status == InMerge {
 		sdb := db.sdbs[1]
 		sdb.setDeleted(key)
 	}
 	sdb := db.sdbs[0]
-	sdb.set(expire, key, val)
-	return
+	return sdb.set(int64(expire), key, val)
 }
 
 // Del delete target val indicate by key.
@@ -120,11 +118,15 @@ func (db *DB) Expire(key string) time.Duration {
 	if status != InNormal {
 		sdb := db.sdbs[1]
 		if expire := sdb.expire(key); expire != -1 {
-			return expire
+			return time.Duration(expire)
 		}
 	}
 	sdb := db.sdbs[0]
-	return sdb.expire(key)
+	return time.Duration(sdb.expire(key))
+}
+
+func (db *DB) SetExpire(expire time.Duration, key string) bool {
+	return db.Set(expire, key, nil)
 }
 
 func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
