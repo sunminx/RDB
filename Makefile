@@ -1,5 +1,7 @@
 .PHONY: build clean test
 
+up: clean build run
+
 refresh: clean build
 
 run:

@@ -412,7 +412,7 @@ func (c *Client) QueueMultiCommand() {
 
 func (c *Client) MultiExec() {
 	multiState := c.multiState
-	c.addReplyMultibulkLen(int64(multiState.cnt))
+	c.AddReplyMultibulkLen(int64(multiState.cnt))
 	for i := int64(0); i < multiState.cnt; i++ {
 		multiCmd := multiState.commands[i]
 		c.argc = multiCmd.argc
@@ -573,14 +573,14 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 
 // AddReplyMultibulk output arrays to client. eg: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n".
 func (c *Client) AddReplyMultibulk(robjs []*obj.Robj) {
-	c.addReplyMultibulkLen(int64(len(robjs)))
+	c.AddReplyMultibulkLen(int64(len(robjs)))
 	for _, robj := range robjs {
 		c.AddReplyBulk(robj)
 	}
 	return
 }
 
-func (c *Client) addReplyMultibulkLen(ln int64) {
+func (c *Client) AddReplyMultibulkLen(ln int64) {
 	c.AddReplyRaw([]byte(fmt.Sprintf("*%d\r\n", ln)))
 }
 

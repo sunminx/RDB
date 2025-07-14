@@ -61,9 +61,9 @@ func (sdb *sdb) keyIsExpired(key string) bool {
 }
 
 func (sdb *sdb) set(expire int64, key string, val *obj.Robj) bool {
-	// Check timestamp if greater than time now.
-	// If not, we should delete key instantly.
-	if time.Now().UnixMilli()-expire > 0 {
+	// Check timestamp if greater than time now. If not, we should delete key instantly.
+	// The value of expire is -1 that means timestamp is not be setted, so we just ignore that test.
+	if expire != -1 && time.Now().UnixMilli()-expire > 0 {
 		sdb.dict.Del(key)
 		return false
 	}

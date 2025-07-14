@@ -9,6 +9,11 @@ import (
 	"github.com/sunminx/RDB/internal/sds"
 )
 
+const (
+	objSetNoFlag setFlag = 0
+	objSetNx             = 1 << iota
+)
+
 func GetCommand(cli client) bool {
 	robj, ok := cli.Get(cli.Key())
 	if !ok {
@@ -22,6 +27,23 @@ func GetCommand(cli client) bool {
 	}
 
 	cli.AddReplyBulk(robj)
+	return OK
+}
+
+func MGetCommand(cli client) bool {
+	argv := cli.Argv()
+	size := len(argv) - 1
+
+	cli.AddReplyMultibulkLen(int64(size))
+
+	for i := 1; i < len(argv); i++ {
+		val, ok := cli.Get(string(argv[i]))
+		if ok {
+			cli.AddReplyBulk(val)
+		} else {
+			cli.AddReplyRaw(common.Reply["nullbulk"])
+		}
+	}
 	return OK
 }
 
@@ -52,6 +74,45 @@ func SetExCommand(cli client) bool {
 	return OK
 }
 
+func MSetCommand(cli client) bool {
+	return msetGerenicCommand(cli, objSetNoFlag)
+}
+
+func MSetNxCommand(cli client) bool {
+	return msetGerenicCommand(cli, objSetNx)
+}
+
+func msetGerenicCommand(cli client, flag setFlag) bool {
+	argv := cli.Argv()
+	size := len(argv)
+
+	if size%2 == 0 {
+		cli.AddReplyError([]byte("wrong number of arguments for MSET"))
+		return ERR
+	}
+
+	if flag&objSetNx != 0 {
+		for i := 1; i < size; i += 2 {
+			if _, ok := cli.Get(string(argv[i])); ok {
+				cli.AddReplyRaw(common.Reply["czero"])
+				return ERR
+			}
+		}
+	}
+
+	for i := 1; i < size; i += 2 {
+		_ = cli.Set(-1, string(argv[i]), sds.NewRobj(argv[i+1]))
+	}
+
+	cli.AddDirty((size - 1) / 2)
+	if flag&objSetNx != 0 {
+		cli.AddReplyRaw(common.Reply["cone"])
+	} else {
+		cli.AddReplyStatus(common.Reply["ok"])
+	}
+	return OK
+}
+
 func AppendCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	val, ok := cli.Get(key)
@@ -72,11 +133,6 @@ func AppendCommand(cli client) bool {
 }
 
 type setFlag int
-
-const (
-	objSetNoFlag setFlag = 0
-	objSetNx             = 1 << iota
-)
 
 func setGenericCommand(cli client, flag setFlag, key string, val, expireParam []byte) bool {
 	expire := int64(-1)

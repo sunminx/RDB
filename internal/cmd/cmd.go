@@ -34,6 +34,7 @@ type client interface {
 	AddReplyUint64(uint64)
 	AddReplyBulk(*obj.Robj)
 	AddReplyMultibulk([]*obj.Robj)
+	AddReplyMultibulkLen(int64)
 }
 
 type CommandProc func(client) bool
@@ -55,8 +56,11 @@ var EmptyCommand = Command{"", nil, 0, "", 0, 0, 0, 0, 0, 0}
 
 var CommandTable []Command = []Command{
 	{"get", GetCommand, 2, "rF", 0, 1, 1, 1, 0, 0},
+	{"mget", MGetCommand, -2, "rF", 0, 1, -1, 1, 0, 0},
 	{"set", SetCommand, -3, "wm", 0, 1, 1, 1, 0, 0},
 	{"setnx", SetNxCommand, 3, "wmF", 0, 1, 1, 1, 0, 0},
+	{"mset", MSetCommand, -3, "wm", 0, 1, -1, 2, 0, 0},
+	{"msetnx", MSetNxCommand, -3, "wm", 0, 1, -1, 2, 0, 0},
 	{"expire", ExpireCommand, 3, "wF", 0, 1, 1, 1, 0, 0},
 	{"expireat", ExpireAtCommand, 3, "wF", 0, 1, 1, 1, 0, 0},
 	{"pexpire", PExpireCommand, 3, "wF", 0, 1, 1, 1, 0, 0},
