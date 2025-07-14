@@ -9,12 +9,12 @@ import (
 	obj "github.com/sunminx/RDB/internal/object"
 )
 
-type MapDict struct {
+type mapDict struct {
 	dict map[string]*obj.Robj
 }
 
-func NewMap() *MapDict {
-	return &MapDict{
+func NewMap() *mapDict {
+	return &mapDict{
 		dict: make(map[string]*obj.Robj),
 	}
 }
@@ -32,13 +32,13 @@ func (e *Entry) TimeDurationVal() time.Duration {
 	return time.Duration(t)
 }
 
-func (d *MapDict) Set(key string, val *obj.Robj) bool {
+func (d *mapDict) set(key string, val *obj.Robj) bool {
 	_, ok := d.dict[key]
 	d.dict[key] = val
 	return !ok
 }
 
-func (d *MapDict) Add(key string, val *obj.Robj) bool {
+func (d *mapDict) add(key string, val *obj.Robj) bool {
 	_, ok := d.dict[key]
 	if ok {
 		return false
@@ -47,12 +47,12 @@ func (d *MapDict) Add(key string, val *obj.Robj) bool {
 	return true
 }
 
-func (d *MapDict) Replace(key string, val *obj.Robj) bool {
+func (d *mapDict) replace(key string, val *obj.Robj) bool {
 	d.dict[key] = val
 	return true
 }
 
-func (d *MapDict) Del(key string) bool {
+func (d *mapDict) del(key string) bool {
 	_, ok := d.dict[key]
 	if !ok {
 		return false
@@ -61,15 +61,15 @@ func (d *MapDict) Del(key string) bool {
 	return true
 }
 
-func (d *MapDict) FetchValue(key string) (*obj.Robj, bool) {
+func (d *mapDict) fetchValue(key string) (*obj.Robj, bool) {
 	val, ok := d.dict[key]
 	return val, ok
 }
 
 var emptyEntry = Entry{}
 
-func (d *MapDict) GetRandomKey() Entry {
-	times := random() % d.Used()
+func (d *mapDict) getRandomKey() Entry {
+	times := random() % d.used()
 	n := 0
 	for key, val := range d.dict {
 		if n == times {
@@ -93,15 +93,15 @@ func random() int {
 	return n
 }
 
-func (d *MapDict) Used() int {
+func (d *mapDict) used() int {
 	return len(d.dict)
 }
 
-func (d *MapDict) Size() int {
+func (d *mapDict) size() int {
 	return 0
 }
 
-func (d *MapDict) Iterator(ctx context.Context) <-chan *Entry {
+func (d *mapDict) iterator(ctx context.Context) <-chan *Entry {
 	ch := make(chan *Entry)
 	go func() {
 		defer close(ch)
@@ -117,7 +117,7 @@ func (d *MapDict) Iterator(ctx context.Context) <-chan *Entry {
 	return ch
 }
 
-func (d *MapDict) Empty() int {
+func (d *mapDict) empty() int {
 	ln := len(d.dict)
 	d.dict = make(map[string]*obj.Robj)
 	return ln

@@ -136,13 +136,13 @@ func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 		sdb := db.sdbs[i]
 		for iteration := 0; !exit; iteration++ {
 			expired := 0
-			n := sdb.expires.Used()
+			n := sdb.expires.used()
 			if n > activeExpireCycleLookupsPerLoop {
 				n = activeExpireCycleLookupsPerLoop
 			}
 
 			for ; n > 0; n-- {
-				e := sdb.expires.GetRandomKey()
+				e := sdb.expires.getRandomKey()
 				if sdb.activeExpireCycleTryExpire(e, time.Now()) {
 					expired += 1
 				}

@@ -16,16 +16,16 @@ type sdb struct {
 }
 
 type dictable interface {
-	Add(string, *obj.Robj) bool
-	Set(string, *obj.Robj) bool
-	Replace(string, *obj.Robj) bool
-	Del(string) bool
-	FetchValue(string) (*obj.Robj, bool)
-	GetRandomKey() Entry
-	Used() int
-	Size() int
-	Iterator(context.Context) <-chan *Entry
-	Empty() int
+	add(string, *obj.Robj) bool
+	set(string, *obj.Robj) bool
+	replace(string, *obj.Robj) bool
+	del(string) bool
+	fetchValue(string) (*obj.Robj, bool)
+	getRandomKey() Entry
+	used() int
+	size() int
+	iterator(context.Context) <-chan *Entry
+	empty() int
 }
 
 func newSdb(id int) *sdb {
@@ -39,12 +39,12 @@ func (sdb *sdb) get(key string) *obj.Robj {
 		sdb.del(key)
 		return nil
 	}
-	o, _ := sdb.dict.FetchValue(key)
+	o, _ := sdb.dict.fetchValue(key)
 	return o
 }
 
 func (sdb *sdb) expire(key string) int64 {
-	e, ok := sdb.expires.FetchValue(key)
+	e, ok := sdb.expires.fetchValue(key)
 	if !ok {
 		return -1
 	}
@@ -52,7 +52,7 @@ func (sdb *sdb) expire(key string) int64 {
 }
 
 func (sdb *sdb) keyIsExpired(key string) bool {
-	v, ok := sdb.expires.FetchValue(key)
+	v, ok := sdb.expires.fetchValue(key)
 	if !ok {
 		return false
 	}
@@ -64,29 +64,29 @@ func (sdb *sdb) set(expire int64, key string, val *obj.Robj) bool {
 	// Check timestamp if greater than time now. If not, we should delete key instantly.
 	// The value of expire is -1 that means timestamp is not be setted, so we just ignore that test.
 	if expire != -1 && time.Now().UnixMilli()-expire > 0 {
-		sdb.dict.Del(key)
+		sdb.dict.del(key)
 		return false
 	}
 
 	if val != nil {
 		sds.TryObjectEncoding(val)
-		added := sdb.dict.Set(key, val)
+		added := sdb.dict.set(key, val)
 		if added {
 			sdb.slen++
 		}
 	}
 
 	if expire != -1 {
-		_ = sdb.expires.Set(key, sds.NewRobj(expire))
+		_ = sdb.expires.set(key, sds.NewRobj(expire))
 	}
 	return true
 }
 
 func (sdb *sdb) del(key string) {
-	deled := sdb.dict.Del(key)
+	deled := sdb.dict.del(key)
 	if deled {
 		sdb.slen--
-		sdb.expires.Del(key)
+		sdb.expires.del(key)
 	}
 	return
 }
@@ -98,8 +98,8 @@ func (sdb *sdb) setDeleted(key string) {
 }
 
 func (sdb *sdb) empty() int {
-	n := sdb.dict.Empty()
-	sdb.expires.Empty()
+	n := sdb.dict.empty()
+	sdb.expires.empty()
 	sdb.slen = 0
 	return n
 }
@@ -131,9 +131,9 @@ func (sdb *sdb) Iterator(ctx context.Context) <-chan DBEntry {
 	ch := make(chan DBEntry)
 	go func() {
 		defer close(ch)
-		for entry := range sdb.dict.Iterator(ctx) {
+		for entry := range sdb.dict.iterator(ctx) {
 			dbEntry := DBEntry{entry, -1}
-			v, ok := sdb.expires.FetchValue(entry.Key)
+			v, ok := sdb.expires.fetchValue(entry.Key)
 			if ok {
 				dbEntry.Expire = v.Val().(int64)
 			}
