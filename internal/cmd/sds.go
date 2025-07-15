@@ -1,10 +1,12 @@
 package cmd
 
 import (
+	"errors"
 	"strconv"
 	"time"
 
 	"github.com/sunminx/RDB/internal/common"
+	"github.com/sunminx/RDB/internal/object"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
 )
@@ -216,4 +218,106 @@ func incrdecrCommand(cli client, key string, n int64) bool {
 	cli.AddReplyInt64(sds.Incr(val, n))
 	cli.AddDirty(1)
 	return OK
+}
+
+func SetBitCommand(cli client) bool {
+	key := cli.Key()
+	argv := cli.Argv()
+	errMsg := []byte("bit is not an integer or out of range")
+
+	var err error
+	off, err := getBitOffsetFromArgument(argv[2])
+	if err != nil {
+		cli.AddReplyError(errMsg)
+		return ERR
+	}
+	on, err := getBitValueFromArgument(argv[3])
+	if err != nil {
+		cli.AddReplyError(errMsg)
+		return ERR
+	}
+	val, err := lookupStringForBitCommand(cli, key, off)
+	if err != nil {
+		cli.AddReplyError([]byte("can't exec bit command on non-string"))
+		return ERR
+	}
+
+	oldBit := getBit(val, off)
+	setBit(val, off, on)
+
+	// oldBit is not zero means the bit is 1 before set operation.
+	if oldBit != 0 {
+		cli.AddReplyRaw(common.Reply["cone"])
+	} else {
+		cli.AddReplyRaw(common.Reply["czero"])
+	}
+	return OK
+}
+
+func getBitOffsetFromArgument(val []byte) (uint64, error) {
+	off, err := strconv.ParseInt(string(val), 10, 64)
+	if err != nil {
+		return 0, nil
+	}
+
+	if off < 0 || (off>>3) > (512*1024*1024) {
+		return 0, errors.New("invalid bit offset")
+	}
+
+	return uint64(off), nil
+}
+
+func getBitValueFromArgument(val []byte) (uint8, error) {
+	if len(val) > 1 {
+		return 0, errors.New("invalid bit value")
+	}
+	return uint8(val[0]), nil
+}
+
+func lookupStringForBitCommand(cli client, key string, off uint64) ([]byte, error) {
+	byteLen := (off >> 3) + 1
+	val, ok := cli.Get(key)
+	if !ok {
+		return make([]byte, byteLen, byteLen), nil
+	} else {
+		if !val.CheckType(object.TypeString) {
+			return nil, errors.New("invalid type of value")
+		}
+		bytes := val.Val().(*sds.SDS).Bytes()
+		if uint64(cap(bytes)) < byteLen {
+			newBytes := make([]byte, byteLen, byteLen)
+			copy(newBytes, bytes)
+			return newBytes, nil
+		} else {
+			return bytes, nil
+		}
+	}
+}
+
+func getBit(val []byte, off uint64) uint8 {
+	bVal := getByte(val, off)
+	bOff := getOffsetInByte(off)
+	return bVal & (0x1 << bOff)
+}
+
+func setBit(val []byte, off uint64, on uint8) {
+	bVal := getByte(val, off)
+	bOff := getOffsetInByte(off)
+	bVal &= ^(1 << bOff)
+	bVal |= (0x1 & on) << bOff
+	idx := getByteIndex(off)
+	val[idx] = bVal
+}
+
+func getByte(val []byte, off uint64) byte {
+	idx := getByteIndex(off)
+	return val[idx]
+}
+
+func getByteIndex(off uint64) uint64 {
+	return off >> 3
+}
+
+func getOffsetInByte(off uint64) uint64 {
+	return 7 - (off & 0x7)
 }

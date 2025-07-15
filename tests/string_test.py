@@ -141,6 +141,30 @@ class TestString(unittest.TestCase):
         self.assertEqual(None, self.cli.get(k3))
         self.cli.flushall()
 
+    def test_msetnx_not_exists_key(self):
+        k1, k2 = "x1", "x2"
+        v1, v2 = "xxx", "yyy"
+        self.assertEqual(1, self.cli.setnx({k1:v1, k2:v2}))
+        self.assertEqual(v1, self.cli.get(k1))
+        self.assertEqual(v2, self.cli.get(k2))
+        self.cli.flushall()
+
+    def test_non_exists_key(self):
+        self.assertEqual(0, self.cli.strlen("notakey"))
+        self.cli.flushall()
+
+    def test_int_encoded_value(self):
+        k, v = "myint", -555
+        self.cli.set(k, v)
+        self.assertEqual(4, self.cli.strlen(k))
+        self.cli.flushall()
+
+    def test_plain_str_value(self):
+        k, v = "mystr", "foozzz0123456789 baz"
+        self.cli.set(k, v)
+        self.assertEqual(20, self.cli.strlen(k))
+        self.cli.flushall()
+
     def tearDown(self):
         if self.cli is not None:
             self.cli.close()
