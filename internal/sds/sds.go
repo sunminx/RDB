@@ -50,7 +50,11 @@ func Len(robj *obj.Robj) int64 {
 		return int64(unwrap(robj).Len())
 	}
 	if robj.CheckEncoding(obj.EncodingInt) {
-		return Digit10(uint64(unwrapInt(robj)))
+		n := unwrapInt(robj)
+		if n < 0 {
+			return 1 + Digit10(uint64(-n))
+		}
+		return Digit10(uint64(n))
 	}
 	return 0
 }

@@ -2,6 +2,7 @@ package cmd
 
 import (
 	"errors"
+	"fmt"
 	"strconv"
 	"time"
 
@@ -10,6 +11,8 @@ import (
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
 )
+
+type setFlag int
 
 const (
 	objSetNoFlag setFlag = 0
@@ -134,8 +137,6 @@ func AppendCommand(cli client) bool {
 	return OK
 }
 
-type setFlag int
-
 func setGenericCommand(cli client, flag setFlag, key string, val, expireParam []byte) bool {
 	expire := int64(-1)
 	if expireParam != nil {
@@ -238,15 +239,58 @@ func SetBitCommand(cli client) bool {
 	}
 	val, err := lookupStringForBitCommand(cli, key, off)
 	if err != nil {
-		cli.AddReplyError([]byte("can't exec bit command on non-string"))
+		cli.AddReplyError([]byte(err.Error()))
 		return ERR
 	}
 
 	oldBit := getBit(val, off)
 	setBit(val, off, on)
+	if err := setStringForBitCommand(cli, key, val); err != nil {
+		cli.AddReplyError([]byte(err.Error()))
+	}
 
 	// oldBit is not zero means the bit is 1 before set operation.
 	if oldBit != 0 {
+		cli.AddReplyRaw(common.Reply["cone"])
+	} else {
+		cli.AddReplyRaw(common.Reply["czero"])
+	}
+	return OK
+}
+
+func GetBitCommand(cli client) bool {
+	key := cli.Key()
+	argv := cli.Argv()
+	errMsg := []byte("bit is not an integer or out of range")
+
+	var err error
+	off, err := getBitOffsetFromArgument(argv[2])
+	if err != nil {
+		cli.AddReplyError(errMsg)
+		return ERR
+	}
+	obj, ok := cli.Get(key)
+	if !ok || !obj.CheckType(object.TypeString) {
+		cli.AddReplyRaw(common.Reply["czero"])
+		return ERR
+	}
+
+	var val []byte
+	switch obj.Encoding() {
+	case object.EncodingRaw:
+		val = obj.Val().(sds.SDS)
+	case object.EncodingInt:
+		val = []byte(fmt.Sprintf("%d", obj.Val().(int64)))
+	default:
+		cli.AddReplyRaw(common.Reply["czero"])
+		return ERR
+
+	}
+
+	bit := getBit(val, off)
+
+	// bit is not zero means the bit is 1 before set operation.
+	if bit != 0 {
 		cli.AddReplyRaw(common.Reply["cone"])
 	} else {
 		cli.AddReplyRaw(common.Reply["czero"])
@@ -274,23 +318,51 @@ func getBitValueFromArgument(val []byte) (uint8, error) {
 	return uint8(val[0]), nil
 }
 
+func setStringForBitCommand(cli client, key string, val []byte) error {
+	obj, ok := cli.Get(key)
+	if !ok {
+		cli.Set(-1, key, sds.NewRobj(val))
+		return nil
+	}
+
+	switch obj.Encoding() {
+	case object.EncodingRaw:
+		obj.SetVal(sds.New(val))
+	case object.EncodingInt:
+		cli.Set(-1, key, sds.NewRobj(val))
+	default:
+	}
+	return nil
+}
+
+// lookupStringForBitCommand lookup byte slice which stores bit.
+// we will set key-val while key is not exists or the capacity of byte slice is not enough.
 func lookupStringForBitCommand(cli client, key string, off uint64) ([]byte, error) {
 	byteLen := (off >> 3) + 1
-	val, ok := cli.Get(key)
+	obj, ok := cli.Get(key)
 	if !ok {
-		return make([]byte, byteLen, byteLen), nil
+		val := make([]byte, byteLen, byteLen)
+		return val, nil
 	} else {
-		if !val.CheckType(object.TypeString) {
-			return nil, errors.New("invalid type of value")
+		if !obj.CheckType(object.TypeString) {
+			return nil, errors.New("-WRONGTYPE Operation against a key holding the wrong kind of value\r\n")
 		}
-		bytes := val.Val().(*sds.SDS).Bytes()
-		if uint64(cap(bytes)) < byteLen {
-			newBytes := make([]byte, byteLen, byteLen)
-			copy(newBytes, bytes)
-			return newBytes, nil
-		} else {
-			return bytes, nil
+		switch obj.Encoding() {
+		case object.EncodingRaw:
+			val := obj.Val().(sds.SDS)
+			if uint64(cap(val)) < byteLen {
+				newVal := make([]byte, byteLen, byteLen)
+				copy(newVal, val)
+				return newVal, nil
+			} else {
+				return val, nil
+			}
+		case object.EncodingInt:
+			val := obj.Val().(int64)
+			return []byte(fmt.Sprintf("%d", val)), nil
+		default:
 		}
+		return nil, errors.New("invalid encoding of value")
 	}
 }
 

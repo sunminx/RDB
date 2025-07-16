@@ -144,7 +144,7 @@ class TestString(unittest.TestCase):
     def test_msetnx_not_exists_key(self):
         k1, k2 = "x1", "x2"
         v1, v2 = "xxx", "yyy"
-        self.assertEqual(1, self.cli.setnx({k1:v1, k2:v2}))
+        self.assertEqual(1, self.cli.msetnx({k1:v1, k2:v2}))
         self.assertEqual(v1, self.cli.get(k1))
         self.assertEqual(v2, self.cli.get(k2))
         self.cli.flushall()
@@ -164,6 +164,69 @@ class TestString(unittest.TestCase):
         self.cli.set(k, v)
         self.assertEqual(20, self.cli.strlen(k))
         self.cli.flushall()
+
+    def test_setbit_non_existing_key(self):
+        k = "mykey"
+        self.cli.delete(k)
+        self.assertEqual(0, self.cli.setbit(k, 2, 1))
+        self.assertEqual(1, self.cli.getbit(k, 2))
+        self.assertEqual('00100000', self.to_bit(self.cli.get(k)))
+        self.cli.flushall()
+
+    def test_setbit_againest_string_encoded_key(self):
+        # @ 64 01000000
+        k, v = "mykey", "@"
+        self.cli.set(k, v)
+        self.assertEqual(0, self.cli.setbit(k, 2, 1))
+        self.assertEqual('01100000', self.to_bit(self.cli.get(k)))
+        self.assertEqual(1, self.cli.setbit(k, 1, 0))
+        self.assertEqual('00100000', self.to_bit(self.cli.get(k)))
+        self.cli.flushall()
+
+    def test_setbit_againest_integer_encoded_key(self):
+        # 1 49 00110001
+        k, v = "mykey", 1
+        self.cli.set(k, v)
+        self.assertEqual(0, self.cli.setbit(k, 6, 1))
+        self.assertEqual('00110011', self.to_bit(self.cli.get(k)))
+        self.assertEqual(1, self.cli.setbit(k, 2, 0))
+        self.assertEqual('00010011', self.to_bit(self.cli.get(k)))
+        self.cli.flushall()
+
+    def test_setbit_againest_wrong_type_key(self):
+        k = "mylist"
+        self.cli.delete(k)
+        self.cli.lpush(k, "foo")
+        try:
+            self.cli.setbit(k, 0, 1)
+        except Exception as e:
+            self.assertRegex(str(e), "WRONGTYPE")
+        self.cli.flushall()
+
+    def test_setbit_with_out_of_range_offset(self):
+        k = "mykey"
+        try:
+            self.cli.setbit(k, 4*1024*1024*1024, 1)
+        except Exception as e:
+            self.assertRegex(str(r), "out of range")
+        self.cli.flushall()
+
+    def test_setbit_with_out_of_range_offset(self):
+        k = "mykey"
+        bs = [-1, 2, 10, 20]
+        for b in bs:
+            try:
+                self.cli.setbit(k, 0, b)
+            except Exception as e:
+                self.assertRegex(str(r), "out of range")
+        self.cli.flushall()
+
+    def to_bit(self, s):
+        ascii_list = [ord(c) for c in s]
+        bs = ""
+        for a in ascii_list:
+            bs += f'{a:08b}'
+        return bs
 
     def tearDown(self):
         if self.cli is not None:

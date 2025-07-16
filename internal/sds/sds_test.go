@@ -1,11 +1,14 @@
 package sds
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 func TestSetValue(t *testing.T) {
 	v := []byte("hello")
 	o := NewRobj(v)
-	b := []byte(o.Val().(SDS))
-	b[1] = 'E'
-	t.Log(string(v))
+	v[1] = 'E'
+	o.SetVal(v)
+	fmt.Printf("o: %+v", o)
 }

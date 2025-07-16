@@ -75,10 +75,6 @@ func Int64ToBytes(n int64) []byte {
 
 func Digit10(n uint64) int64 {
 	var ln int64
-	if n < 0 {
-		ln = 1
-		n = -n
-	}
 
 	if n < 10 {
 		return ln + 1
