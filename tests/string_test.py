@@ -221,12 +221,32 @@ class TestString(unittest.TestCase):
                 self.assertRegex(str(r), "out of range")
         self.cli.flushall()
 
+    def test_setbit_fuzzing(self):
+        import random
+
+        size = 256
+        ln = size*8
+        k = "mykey"
+        for i in range(1):
+            v = "\0"*size
+            self.cli.set(k, v)
+            bit_offset = random.randint(0, ln-1)
+            bit_offset = random.randint(0, ln-1)
+            bit_value = random.randint(0, 1)
+            bit_list = list(self.to_bit(v))
+            bit_list[bit_offset] = str(bit_value)
+            new_v = self.to_str(''.join(bit_list))
+            self.assertEqual(0, self.cli.setbit(k, bit_offset, bit_value))
+            self.assertEqual(new_v, self.cli.get(k))
+        self.cli.flushall()
+
     def to_bit(self, s):
         ascii_list = [ord(c) for c in s]
-        bs = ""
-        for a in ascii_list:
-            bs += f'{a:08b}'
-        return bs
+        return ''.join([f'{a:08b}' for a in ascii_list])
+
+    def to_str(self, b):
+        byte_list = [b[i:i+8]for i in range(0, len(b), 8)]
+        return ''.join([chr(int(byte, 2)) for byte in byte_list])
 
     def tearDown(self):
         if self.cli is not None:
