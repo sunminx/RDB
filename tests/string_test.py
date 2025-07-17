@@ -240,6 +240,36 @@ class TestString(unittest.TestCase):
             self.assertEqual(new_v, self.cli.get(k))
         self.cli.flushall()
 
+    def test_getbit_againest_non_existing_key(self):
+        k = "mykey"
+        self.cli.delete(k)
+        self.assertEqual(0, self.cli.getbit(k, 0))
+        self.cli.flushall()
+
+    def test_getbit_againest_string_encoded_key(self):
+        # ` 96 01100000
+        k, v = "mykey", "`"
+        self.cli.set(k, v)
+        self.assertEqual(0, self.cli.getbit(k, 0))
+        self.assertEqual(1, self.cli.getbit(k, 1))
+        self.assertEqual(1, self.cli.getbit(k, 2))
+        self.assertEqual(0, self.cli.getbit(k, 3))
+        self.assertEqual(0, self.cli.getbit(k, 8))
+        self.assertEqual(0, self.cli.getbit(k, 100))
+        self.assertEqual(0, self.cli.getbit(k, 1000))
+
+    def test_getbit_againest_integer_encoded_key(self):
+        # 1 49 00110000
+        k, v = "mykey", 1
+        self.cli.set(k, v)
+        self.assertEqual(0, self.cli.getbit(k, 0))
+        self.assertEqual(0, self.cli.getbit(k, 1))
+        self.assertEqual(1, self.cli.getbit(k, 2))
+        self.assertEqual(1, self.cli.getbit(k, 3))
+        self.assertEqual(0, self.cli.getbit(k, 8))
+        self.assertEqual(0, self.cli.getbit(k, 100))
+        self.assertEqual(0, self.cli.getbit(k, 1000))
+
     def to_bit(self, s):
         ascii_list = [ord(c) for c in s]
         return ''.join([f'{a:08b}' for a in ascii_list])

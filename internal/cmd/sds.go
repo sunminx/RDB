@@ -367,13 +367,16 @@ func lookupStringForBitCommand(cli client, key string, off uint64) ([]byte, erro
 }
 
 func getBit(val []byte, off uint64) uint8 {
-	bVal := getByte(val, off)
+	bVal, ok := getByte(val, off)
+	if !ok {
+		return 0
+	}
 	bOff := getOffsetInByte(off)
 	return bVal & (0x1 << bOff)
 }
 
 func setBit(val []byte, off uint64, on uint8) {
-	bVal := getByte(val, off)
+	bVal, _ := getByte(val, off)
 	bOff := getOffsetInByte(off)
 	bVal &= ^(1 << bOff)
 	bVal |= (0x1 & on) << bOff
@@ -381,9 +384,12 @@ func setBit(val []byte, off uint64, on uint8) {
 	val[idx] = bVal
 }
 
-func getByte(val []byte, off uint64) byte {
+func getByte(val []byte, off uint64) (byte, bool) {
 	idx := getByteIndex(off)
-	return val[idx]
+	if idx >= uint64(len(val)) {
+		return '\n', false
+	}
+	return val[idx], true
 }
 
 func getByteIndex(off uint64) uint64 {
