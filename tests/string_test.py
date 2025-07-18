@@ -257,6 +257,7 @@ class TestString(unittest.TestCase):
         self.assertEqual(0, self.cli.getbit(k, 8))
         self.assertEqual(0, self.cli.getbit(k, 100))
         self.assertEqual(0, self.cli.getbit(k, 1000))
+        self.cli.flushall()
 
     def test_getbit_againest_integer_encoded_key(self):
         # 1 49 00110000
@@ -269,6 +270,125 @@ class TestString(unittest.TestCase):
         self.assertEqual(0, self.cli.getbit(k, 8))
         self.assertEqual(0, self.cli.getbit(k, 100))
         self.assertEqual(0, self.cli.getbit(k, 1000))
+        self.cli.flushall()
+
+    def test_setrange_againest_non_existing_key(self):
+        k = "mykey"
+        self.cli.delete(k)
+        self.assertEqual(3, self.cli.setrange(k, 0, "foo"))
+        self.assertEqual("foo", self.cli.get(k))
+        self.cli.delete(k)
+        self.assertEqual(0, self.cli.setrange(k, 0, ""))
+        self.assertEqual(None, self.cli.get(k))
+        self.cli.delete(k)
+        self.assertEqual(4, self.cli.setrange(k, 1, "foo"))
+        self.assertEqual("\0foo", self.cli.get(k))
+        self.cli.flushall()
+
+    def test_setrange_againest_string_encoded_value(self):
+        k, v = "mykey", "foo"
+        self.cli.set(k, v)
+        self.assertEqual(3, self.cli.setrange(k, 0, "b"))
+        self.assertEqual("boo", self.cli.get(k))
+
+        self.cli.set(k, v)
+        self.assertEqual(3, self.cli.setrange(k, 0, ""))
+        self.assertEqual("foo", self.cli.get(k))
+
+        self.cli.set(k, v)
+        self.assertEqual(3, self.cli.setrange(k, 1, "b"))
+        self.assertEqual("fbo", self.cli.get(k))
+
+        self.cli.set(k, v)
+        self.assertEqual(7, self.cli.setrange(k, 4, "bar"))
+        self.assertEqual("foo\0bar", self.cli.get(k))
+        self.cli.flushall()
+
+    def test_setrange_againest_integer_encoded_value(self):
+        k, v = "mykey", 1234
+        self.cli.set(k, v)
+        self.assertEqual(4, self.cli.setrange(k, 0, 2))
+        self.assertEqual("2234", self.cli.get(k))
+
+        self.cli.set(k, v)
+        self.assertEqual(4, self.cli.setrange(k, 0, ""))
+        self.assertEqual("1234", self.cli.get(k))
+
+        self.cli.set(k, v)
+        self.assertEqual(4, self.cli.setrange(k, 1, 3))
+        self.assertEqual("1334", self.cli.get(k))
+
+        self.cli.set(k, v)
+        self.assertEqual(6, self.cli.setrange(k, 5, 2))
+        self.assertEqual("1234\x002", self.cli.get(k))
+        self.cli.flushall()
+
+    def test_setrange_againest_wrong_type_key(self):
+        k = "mykey"
+        self.cli.delete(k)
+        self.cli.lpush(k, "foo")
+        try:
+            self.cli.setrange(k, 0, "bar")
+        except Exception as e:
+            self.assertRegex(str(e), "WRONGTYPE")
+        self.cli.flushall()
+
+    def test_setrange_againest_out_of_range_offset(self):
+        k, v = "mykey", "hello"
+        self.cli.delete(k)
+        try:
+            self.cli.setrange(k, 512*1024*1024-4, "world")
+        except Exception as e:
+            self.assertRegex(str(e), "maximum allowed size")
+        self.cli.set(k, v)
+        try:
+            self.cli.setrange(k, -1, "world")
+        except Exception as e:
+            self.assertRegex(str(e), "out of range")
+        try:
+            self.cli.setrange(k, 512*1024*1024-4, "world")
+        except Exception as e:
+            self.assertRegex(str(e), "maximum allowed size")
+        self.cli.flushall()
+
+    def test_getrange_againest_non_existing_key(self):
+        k = "mykey"
+        self.cli.delete(k)
+        self.assertEqual('', self.cli.getrange(k, 0, -1))
+        self.cli.flushall()
+
+    def test_getrange_againest_string_encoded_value(self):
+        k, v = "mykey", "Hello World"
+        self.cli.set(k, v)
+        self.assertEqual("Hell", self.cli.getrange(k, 0, 3))
+        self.assertEqual("Hello World", self.cli.getrange(k, 0, -1))
+        self.assertEqual("orld", self.cli.getrange(k, -4, -1))
+        self.assertEqual("", self.cli.getrange(k, 5, 3))
+        self.assertEqual(" World", self.cli.getrange(k, 5, 5000))
+        self.assertEqual("Hello World", self.cli.getrange(k, -5000, 10000))
+        self.cli.flushall()
+
+    def test_getrange_againest_integer_encoded_value(self):
+        k, v = "mykey", 1234
+        self.cli.set(k, v)
+        self.assertEqual("123", self.cli.getrange(k, 0, 2))
+        self.assertEqual("1234", self.cli.getrange(k, 0, -1))
+        self.assertEqual("234", self.cli.getrange(k, -3, -1))
+        self.assertEqual("", self.cli.getrange(k, 5, 3))
+        self.assertEqual("4", self.cli.getrange(k, 3, 5000))
+        self.assertEqual("1234", self.cli.getrange(k, -5000, 10000))
+        self.cli.flushall()
+
+    def test_getrange_fuzzing(self):
+        import random
+
+        k = "mykey"
+        for i in range(1000):
+            v = self.random_string(1024)
+            self.cli.set(k, v)
+            start, end = random.randint(0, 1500), random.randint(0, 1500)
+            self.assertEqual(v[start:end+1], self.cli.getrange(k, start, end))
+        self.cli.flushall()
 
     def to_bit(self, s):
         ascii_list = [ord(c) for c in s]
@@ -277,6 +397,13 @@ class TestString(unittest.TestCase):
     def to_str(self, b):
         byte_list = [b[i:i+8]for i in range(0, len(b), 8)]
         return ''.join([chr(int(byte, 2)) for byte in byte_list])
+
+    def random_string(self, length):
+        import random
+        import string
+
+        chars = string.ascii_letters + string.digits
+        return ''.join(random.choices(chars, k=length))
 
     def tearDown(self):
         if self.cli is not None:

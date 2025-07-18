@@ -552,7 +552,7 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 	if robj.CheckEncoding(obj.EncodingRaw) {
 		s := robj.Val().(sds.SDS)
 		c.AddReplyRaw([]byte("$" + strconv.Itoa(s.Len()) + "\r\n"))
-		c.AddReplyRaw(s.Bytes())
+		c.AddReplyRaw(s)
 	} else {
 		val := robj.Val().(int64)
 		n := val
@@ -569,6 +569,13 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 		c.AddReplyRaw([]byte(strconv.FormatInt(val, 10)))
 	}
 	c.AddReplyRaw(common.Reply["crlf"])
+}
+
+func (c *Client) AddReplyBulkRaw(data []byte) {
+	c.AddReplyRaw([]byte("$" + strconv.Itoa(len(data)) + "\r\n"))
+	c.AddReplyRaw(data)
+	c.AddReplyRaw([]byte("\r\n"))
+	return
 }
 
 // AddReplyMultibulk output arrays to client. eg: "*2\r\n$3\r\nfoo\r\n$3\r\nbar\r\n".

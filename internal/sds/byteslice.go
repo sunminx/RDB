@@ -16,39 +16,35 @@ func NewEmpty() SDS {
 	return New(bytes)
 }
 
-func (s *SDS) deepcopy() SDS {
-	b := make([]byte, 0, s.Len())
-	copy(b, []byte(*s))
+func (s SDS) deepcopy() SDS {
+	b := make([]byte, 0, len(s))
+	copy(b, s)
 	return New(b)
 }
 
-func (s *SDS) Len() int {
-	return len(([]byte)(*s))
+func (s SDS) Len() int {
+	return len(s)
 }
 
-func (s *SDS) IsEmpty() bool {
-	return s.Len() == 0
+func (s SDS) IsEmpty() bool {
+	return len(s) == 0
 }
 
-func (s *SDS) Cap() int {
-	return cap(([]byte)(*s))
+func (s SDS) Cap() int {
+	return cap(s)
 }
 
-func (s *SDS) Bytes() []byte {
-	return ([]byte)(*s)
+func (s SDS) String() string {
+	return string(s)
 }
 
-func (s *SDS) String() string {
-	return string(s.Bytes())
-}
-
-func (s *SDS) Dup() SDS {
-	bytes := make([]byte, s.Len(), s.Cap())
-	copy(bytes, ([]byte)(*s))
+func (s SDS) Dup() SDS {
+	bytes := make([]byte, len(s), cap(s))
+	copy(bytes, s)
 	return New(bytes)
 }
 
-func (s *SDS) DupLine() SDS {
+func (s SDS) DupLine() SDS {
 	newline, ok := s.SplitNewLine()
 	if !ok {
 		return NewEmpty()
@@ -56,19 +52,19 @@ func (s *SDS) DupLine() SDS {
 	return New(newline)
 }
 
-func (s *SDS) Empty() {
+func (s SDS) Empty() {
 	if s.Len() == 0 {
 		return
 	}
-	(*s) = (*s)[:0]
+	s = s[:0]
 }
 
-func (s *SDS) Cat(b []byte) {
-	(*s) = append(*s, b...)
+func (s SDS) Cat(b []byte) {
+	s = append(s, b...)
 }
 
-func (s *SDS) Cmp(t SDS) int {
-	return slices.Compare(([]byte)(*s), ([]byte)(t))
+func (s SDS) Cmp(t SDS) int {
+	return slices.Compare(s, t)
 }
 
 func Join(strs []string, sep string) SDS {
@@ -95,34 +91,74 @@ func JoinSDS(sdss []SDS, sep string) SDS {
 	return s
 }
 
-func (s *SDS) Cpy(t string) {
+func (s SDS) Cpy(t string) {
 	if s.Len() > len(t) {
-		(*s) = (*s)[:len(t)]
+		s = s[:len(t)]
 	}
-	copy(([]byte)(*s), []byte(t[:s.Len()]))
-	if s.Len() < len(t) {
-		(*s) = append((*s), []byte(t[s.Len():])...)
+	copy(s, t[:len(s)])
+	if len(s) < len(t) {
+		s = append(s, (t[len(s):])...)
 	}
 }
 
-func (s *SDS) Equal(t SDS) bool {
-	return slices.Equal(s.Bytes(), t.Bytes())
+func (s SDS) Equal(t SDS) bool {
+	return slices.Equal(s, t)
 }
 
-func (s *SDS) SplitNewLine() ([]byte, bool) {
-	idx := slices.Index(s.Bytes(), '\n')
+func (s SDS) SplitNewLine() ([]byte, bool) {
+	idx := slices.Index(s, '\n')
 	if idx == -1 {
 		return nil, false
 	}
-	if ([]byte)(*s)[idx-1] == '\r' {
+	if s[idx-1] == '\r' {
 		idx -= 1
 	}
-	newline := ([]byte)(*s)[:idx]
+	newline := s[:idx]
 	// skip '\r\n'
-	(*s) = (*s)[idx+2:]
+	s = s[idx+2:]
 	return newline, true
 }
 
-func (s *SDS) FirstByte() byte {
-	return ([]byte)(*s)[0]
+func (s SDS) FirstByte() byte {
+	return s[0]
+}
+
+func (s SDS) SetAt(offset int, newVal []byte) SDS {
+	s = s.growZero(offset + len(newVal))
+	help := s[offset:]
+	copy(help, newVal)
+	return s
+}
+
+func (s SDS) growZero(newLen int) SDS {
+	curLen := s.Len()
+	if curLen >= newLen {
+		return s
+	}
+	growLen := newLen - curLen
+	grows := make([]byte, growLen, growLen)
+	s = append(s, grows...)
+	return s
+}
+
+func (s SDS) Range(start, end int) []byte {
+	if start < 0 {
+		start = len(s) + start
+	}
+	if end < 0 {
+		end = len(s) + end
+	}
+	if start < 0 {
+		start = 0
+	}
+	if end < 0 {
+		end = 0
+	}
+	if end >= len(s) {
+		end = len(s) - 1
+	}
+	if start > end || len(s) == 0 {
+		return []byte{}
+	}
+	return s[start : end+1]
 }

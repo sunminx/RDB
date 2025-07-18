@@ -16,7 +16,7 @@ func printBinary(bytes []byte, t *testing.T) {
 func TestGetByte(t *testing.T) {
 	bytes := []byte("12345")
 	off := uint64(31)
-	target := getByte(bytes, off)
+	target, _ := getByte(bytes, off)
 	t.Logf("%08b\n", target)
 }
 
@@ -30,7 +30,7 @@ func TestGetBitValue(t *testing.T) {
 	v := []byte("12345")
 	printBinary(v, t)
 	off := uint64(30)
-	n := getBitValue(v, off)
+	n := getBit(v, off)
 	t.Log(n)
 }
 
@@ -39,7 +39,12 @@ func TestSetBitValue(t *testing.T) {
 	printBinary(v, t)
 	off := uint64(29)
 	on := uint8(0)
-	setBitValue(v, off, on)
+	setBit(v, off, on)
 	printBinary(v, t)
 	t.Log(string(v))
+}
+
+func TestSetSubstring(t *testing.T) {
+	str := "Hello redis"
+	t.Log(str[:5])
 }

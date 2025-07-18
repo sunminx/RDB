@@ -33,6 +33,7 @@ type client interface {
 	AddReplyInt64(int64)
 	AddReplyUint64(uint64)
 	AddReplyBulk(*obj.Robj)
+	AddReplyBulkRaw([]byte)
 	AddReplyMultibulk([]*obj.Robj)
 	AddReplyMultibulkLen(int64)
 }
@@ -74,6 +75,8 @@ var CommandTable []Command = []Command{
 	{"setex", SetExCommand, 4, "wmF", 0, 1, 1, 1, 0, 0},
 	{"setbit", SetBitCommand, 4, "wm", 0, 1, 1, 1, 0, 0},
 	{"getbit", GetBitCommand, 3, "rF", 0, 1, 1, 1, 0, 0},
+	{"setrange", SetRangeCommand, 4, "wm", 0, 1, 1, 1, 0, 0},
+	{"getrange", GetRangeCommand, 4, "r", 0, 1, 1, 1, 0, 0},
 	{"rpush", RPushCommand, -3, "wmF", 0, 1, 1, 1, 0, 0},
 	{"lpush", LPushCommand, -3, "wmF", 0, 1, 1, 1, 0, 0},
 	{"rpop", RPopCommand, 2, "wF", 0, 1, 1, 1, 0, 0},

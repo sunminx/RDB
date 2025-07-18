@@ -3,6 +3,7 @@ package cmd
 import (
 	"errors"
 	"fmt"
+	"math"
 	"strconv"
 	"time"
 
@@ -398,4 +399,98 @@ func getByteIndex(off uint64) uint64 {
 
 func getOffsetInByte(off uint64) uint64 {
 	return 7 - (off & 0x7)
+}
+
+func SetRangeCommand(cli client) bool {
+	key, argv := cli.Key(), cli.Argv()
+	offset, ok := getIntFromArgvOrReply(cli, argv[2])
+	if !ok {
+		return ERR
+	}
+	if offset < 0 || offset > math.MaxInt {
+		cli.AddReplyError([]byte("value is out of range"))
+		return ERR
+	}
+
+	newVal := argv[3]
+	newValLen := len(newVal)
+	obj, ok := cli.Get(key)
+	if !ok {
+		if newValLen == 0 {
+			cli.AddReplyRaw(common.Reply["czero"])
+			return OK
+		}
+		if offset+newValLen > 512*1024*1024 {
+			cli.AddReplyError([]byte("string exceeds maximum allowed size (512MB)"))
+			return ERR
+		}
+		obj = sds.NewRobj(sds.New(make([]byte, offset+newValLen)))
+		_ = cli.Set(-1, key, obj)
+	} else {
+		if !obj.CheckType(object.TypeString) {
+			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			return ERR
+		}
+		if newValLen == 0 {
+			cli.AddReplyInt64(sds.Len(obj))
+			return OK
+		}
+		if offset+newValLen > 512*1024*1024 {
+			cli.AddReplyError([]byte("string exceeds maximum allowed size (512MB)"))
+			return ERR
+		}
+	}
+
+	var val sds.SDS
+	if obj.CheckEncoding(object.EncodingInt) {
+		obj.SetEncoding(object.EncodingRaw)
+		val = sds.New([]byte(strconv.FormatInt(obj.Val().(int64), 10)))
+	} else {
+		val = obj.Val().(sds.SDS)
+	}
+	val = val.SetAt(offset, newVal)
+	obj.SetVal(val)
+	cli.AddDirty(1)
+	cli.AddReplyInt64(sds.Len(obj))
+	return OK
+}
+
+func GetRangeCommand(cli client) bool {
+	key, argv := cli.Key(), cli.Argv()
+	start, ok := getIntFromArgvOrReply(cli, argv[2])
+	if !ok {
+		return ERR
+	}
+	end, ok := getIntFromArgvOrReply(cli, argv[3])
+	if !ok {
+		return ERR
+	}
+	obj, ok := cli.Get(key)
+	if !ok {
+		cli.AddReplyRaw(common.Reply["emptybulk"])
+		return ERR
+	}
+	if !obj.CheckType(object.TypeString) {
+		cli.AddReplyError(common.Reply["wrongtype"])
+		return ERR
+	}
+
+	var val sds.SDS
+	if obj.CheckEncoding(object.EncodingRaw) {
+		val = obj.Val().(sds.SDS)
+	} else {
+		val = sds.New([]byte(strconv.FormatInt(obj.Val().(int64), 10)))
+	}
+	rangeVal := val.Range(start, end)
+	cli.AddReplyBulkRaw(rangeVal)
+	return OK
+}
+
+func getIntFromArgvOrReply(cli client, val []byte) (int, bool) {
+	n, err := strconv.Atoi(string(val))
+	if err != nil {
+		cli.AddReplyError([]byte(err.Error()))
+		return 0, false
+	}
+	return n, true
 }

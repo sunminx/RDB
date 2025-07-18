@@ -194,3 +194,13 @@ func TestSplitNewLine(t *testing.T) {
 		t.Log(string(sds.Bytes()))
 	}
 }
+
+func TestGrowZero(t *testing.T) {
+	s := New([]byte("hello redis"))
+	s.GrowZero(24)
+	t.Log(s.String())
+	t.Log(s.Len())
+
+	b := []byte("helloredis")
+	t.Log(string(b[1:5]))
+}
