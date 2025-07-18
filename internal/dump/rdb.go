@@ -62,12 +62,12 @@ func (rdb *Rdber) save(ctx context.Context) error {
 		return errors.New("save select db num error")
 	}
 
-	fn := func(ctx context.Context, e db.DBEntry) error {
+	fn := func(ctx context.Context, e *db.Entry) error {
 		select {
 		case <-ctx.Done():
 			return errContextCanceled
 		default:
-			saved := rdb.saveKeyValPair(e.Key, e.Val, e.Expire)
+			saved := rdb.saveKeyValPair(e.Key, e.Val, e.Expires)
 			if !saved {
 				return errors.New("save key-val pair error")
 			}
@@ -331,10 +331,10 @@ func (rdb *Rdber) loadStringIntObject(typ uint8) int64 {
 	return n
 }
 
-func (rdb *Rdber) saveKeyValPair(key string, val *obj.Robj, expire int64) bool {
+func (rdb *Rdber) saveKeyValPair(key string, val *obj.Robj, expires time.Duration) bool {
 	var saved = true
-	if expire != -1 {
-		saved = saved && rdb.saveMillisencondTime(expire)
+	if expires != -1 {
+		saved = saved && rdb.saveMillisencondTime(expires)
 	}
 	saved = saved && rdb.saveObjectType(val)
 	saved = saved && rdb.saveString(key)
@@ -564,9 +564,9 @@ func (rdb *Rdber) loadMillisecondTime() int64 {
 	return Cond(err != nil, -1, t)
 }
 
-func (rdb *Rdber) saveMillisencondTime(t int64) bool {
+func (rdb *Rdber) saveMillisencondTime(t time.Duration) bool {
 	buf := new(bytes.Buffer)
-	binary.Write(buf, binary.LittleEndian, t)
+	binary.Write(buf, binary.LittleEndian, int64(t))
 	rdb.saveType(rdbOpcodeExpiretimeMs)
 	rdb.writeRaw(buf.Bytes())
 	return saved

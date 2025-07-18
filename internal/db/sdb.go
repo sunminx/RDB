@@ -10,96 +10,90 @@ import (
 
 type sdb struct {
 	id      int
-	dict    dictable
-	expires dictable
+	dict    dict
+	expires dict
 	slen    int64
 }
 
-type dictable interface {
-	add(string, *obj.Robj) bool
-	set(string, *obj.Robj) bool
-	replace(string, *obj.Robj) bool
-	del(string) bool
-	fetchValue(string) (*obj.Robj, bool)
-	getRandomKey() Entry
-	used() int
-	size() int
-	iterator(context.Context) <-chan *Entry
-	empty() int
-}
-
 func newSdb(id int) *sdb {
-	return &sdb{id: id, dict: NewMap(), expires: NewMap(), slen: 0}
+	return &sdb{id: id, dict: newDict(), expires: newDict()}
 }
 
 var emptyRobj = obj.Robj{}
 
-func (sdb *sdb) get(key string) *obj.Robj {
-	if sdb.keyIsExpired(key) {
-		sdb.del(key)
-		return nil
-	}
-	o, _ := sdb.dict.fetchValue(key)
-	return o
-}
-
-func (sdb *sdb) expire(key string) int64 {
-	e, ok := sdb.expires.fetchValue(key)
-	if !ok {
-		return -1
-	}
-	return e.Val().(int64)
-}
-
-func (sdb *sdb) keyIsExpired(key string) bool {
-	v, ok := sdb.expires.fetchValue(key)
-	if !ok {
-		return false
-	}
-	expire, _ := v.Val().(int64)
-	return time.Now().UnixMilli()-expire > 0
-}
-
-func (sdb *sdb) set(expire int64, key string, val *obj.Robj) bool {
+func (sdb *sdb) set(expires time.Duration, key string, val *obj.Robj) bool {
 	// Check timestamp if greater than time now. If not, we should delete key instantly.
 	// The value of expire is -1 that means timestamp is not be setted, so we just ignore that test.
-	if expire != -1 && time.Now().UnixMilli()-expire > 0 {
-		sdb.dict.del(key)
+	if expires != -1 && isPassed(expires, time.Now()) {
+		sdb.dict.remove(key)
 		return false
 	}
-
 	if val != nil {
 		sds.TryObjectEncoding(val)
-		added := sdb.dict.set(key, val)
+		added := sdb.dict.put(key, val)
 		if added {
 			sdb.slen++
 		}
 	}
-
-	if expire != -1 {
-		_ = sdb.expires.set(key, sds.NewRobj(expire))
+	if expires != -1 {
+		_ = sdb.expires.put(key, expires)
 	}
 	return true
 }
 
-func (sdb *sdb) del(key string) {
-	deled := sdb.dict.del(key)
-	if deled {
-		sdb.slen--
-		sdb.expires.del(key)
+func (sdb *sdb) get(key string) *obj.Robj {
+	if sdb.isExpired(key) {
+		sdb.del(key)
+		return nil
 	}
-	return
+	o, ok := sdb.dict.get(key)
+	if !ok {
+		return nil
+	}
+	return o.(*obj.Robj)
+}
+
+func (sdb *sdb) getExpires(key string) time.Duration {
+	expires, ok := sdb.expires.get(key)
+	if !ok {
+		return time.Duration(-1)
+	}
+	return expires.(time.Duration)
+}
+
+func (sdb *sdb) isExpired(key string) bool {
+	v, ok := sdb.expires.get(key)
+	if !ok {
+		return false
+	}
+	expires := v.(time.Duration)
+	return isPassed(expires, time.Now())
+}
+
+func isPassed(expires time.Duration, now time.Time) bool {
+	return now.After(time.UnixMilli(int64(expires)))
+}
+
+func (sdb *sdb) del(key string) {
+	ok := sdb.dict.remove(key)
+	if ok {
+		sdb.slen--
+		_ = sdb.expires.remove(key)
+	}
 }
 
 func (sdb *sdb) setDeleted(key string) {
 	val := sdb.get(key)
-	val.SetDeleted(true)
-	sdb.slen--
+	if val != nil {
+		sdb.slen--
+		val.SetDeleted(true)
+	}
 }
 
 func (sdb *sdb) empty() int {
-	n := sdb.dict.empty()
-	sdb.expires.empty()
+	n := sdb.dict.used()
+	sdb.dict = newDict()
+	sdb.expires = newDict()
 	sdb.slen = 0
 	return n
 }
@@ -112,33 +106,31 @@ const (
 	activeExpireCycleLookupsPerLoop = 20
 )
 
-func (sdb *sdb) activeExpireCycleTryExpire(entry Entry, now time.Time) bool {
-	expire := entry.TimeDurationVal()
-	// expired
-	if now.UnixMilli() > int64(expire) {
-		sdb.del(entry.Key)
+func (sdb *sdb) activeExpireCycleTryExpire(key string, expires time.Duration, now time.Time) bool {
+	if isPassed(expires, now) {
+		sdb.del(key)
 		return true
 	}
 	return false
 }
 
-type DBEntry struct {
-	*Entry
-	Expire int64
-}
-
-func (sdb *sdb) Iterator(ctx context.Context) <-chan DBEntry {
-	ch := make(chan DBEntry)
+func (sdb *sdb) iter(ctx context.Context) <-chan *Entry {
+	c := make(chan *Entry)
 	go func() {
-		defer close(ch)
-		for entry := range sdb.dict.iterator(ctx) {
-			dbEntry := DBEntry{entry, -1}
-			v, ok := sdb.expires.fetchValue(entry.Key)
-			if ok {
-				dbEntry.Expire = v.Val().(int64)
+		defer close(c)
+		for key, robj := range sdb.dict {
+			select {
+			case <-ctx.Done():
+				return
+			default:
+				entry := &Entry{Key: key, Val: robj.(*obj.Robj), Expires: time.Duration(-1)}
+				expires, ok := sdb.expires.get(key)
+				if ok {
+					entry.Expires = expires.(time.Duration)
+				}
+				c <- entry
 			}
-			ch <- dbEntry
 		}
 	}()
-	return ch
+	return c
 }

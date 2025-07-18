@@ -138,27 +138,27 @@ func AppendCommand(cli client) bool {
 	return OK
 }
 
-func setGenericCommand(cli client, flag setFlag, key string, val, expireParam []byte) bool {
-	expire := int64(-1)
-	if expireParam != nil {
+func setGenericCommand(cli client, flag setFlag, key string, val, expiresParam []byte) bool {
+	expires := int64(-1)
+	if expiresParam != nil {
 		var err error
-		expire, err = strconv.ParseInt(string(expireParam), 10, 64)
-		if err != nil || expire <= 0 {
+		expires, err = strconv.ParseInt(string(expiresParam), 10, 64)
+		if err != nil || expires <= 0 {
 			cli.AddReplyError([]byte("invalid expire param"))
 			return true
 		}
-		expire *= 1e3
+		expires *= 1e3
 	}
 
-	if expire != -1 {
-		expire += time.Now().UnixMilli()
+	if expires != -1 {
+		expires += time.Now().UnixMilli()
 	}
 
 	if _, exists := cli.Get(key); exists && (flag&objSetNx) != 0 {
 		return false
 	}
 
-	cli.Set(time.Duration(expire), key, sds.NewRobj(val))
+	cli.Set(time.Duration(expires), key, sds.NewRobj(val))
 	cli.AddDirty(1)
 	return true
 }

@@ -80,8 +80,8 @@ func expireGenericCommand(cli client, basetime *time.Time, unit int) bool {
 		return ERR
 	}
 
-	expire := int64(cli.Expire(key))
-	if expire != -1 && time.Now().UnixMilli()-expire > 0 {
+	expires := int64(cli.Expires(key))
+	if expires != -1 && time.Now().After(time.UnixMilli(expires)) {
 		cli.Del(key)
 		cli.AddDirty(1)
 		cli.AddReplyRaw(common.Reply["cnone"])
@@ -89,25 +89,25 @@ func expireGenericCommand(cli client, basetime *time.Time, unit int) bool {
 	}
 
 	var err error
-	expire, err = strconv.ParseInt(string(cli.Argv()[2]), 10, 64)
+	expires, err = strconv.ParseInt(string(cli.Argv()[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyError([]byte("invalid expire param"))
 		return ERR
 	}
 
 	if unit == unitSeconds {
-		expire *= 1e3
+		expires *= 1e3
 	}
 
 	// Basetime is not nil that means expire param is not a timestamp.
 	if basetime != nil {
-		expire += basetime.UnixMilli()
+		expires += basetime.UnixMilli()
 	}
 
 	cli.AddDirty(1)
 
 	// Invalid expire timestamp will cause the key to be deleted immediately.
-	if ok := cli.SetExpire(time.Duration(expire), key); ok {
+	if ok := cli.SetExpire(time.Duration(expires), key); ok {
 		cli.AddReplyRaw(common.Reply["cone"])
 	} else {
 		cli.AddReplyRaw(common.Reply["czero"])

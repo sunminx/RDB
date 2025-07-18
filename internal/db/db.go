@@ -74,18 +74,18 @@ func (db *DB) Get(key string) (*obj.Robj, bool) {
 	return val, val != nil && !val.Deleted()
 }
 
-func (db *DB) Set(expire time.Duration, key string, val *obj.Robj) bool {
+func (db *DB) Set(expires time.Duration, key string, val *obj.Robj) bool {
 	status := db.status.Load()
 	if status == InPersist {
 		sdb := db.sdbs[1]
-		return sdb.set(int64(expire), key, val)
+		return sdb.set(expires, key, val)
 	}
 	if status == InMerge {
 		sdb := db.sdbs[1]
 		sdb.setDeleted(key)
 	}
 	sdb := db.sdbs[0]
-	return sdb.set(int64(expire), key, val)
+	return sdb.set(expires, key, val)
 }
 
 // Del delete target val indicate by key.
@@ -113,16 +113,16 @@ func (db *DB) Del(key string) {
 	return
 }
 
-func (db *DB) Expire(key string) time.Duration {
+func (db *DB) Expires(key string) time.Duration {
 	status := db.status.Load()
 	if status != InNormal {
 		sdb := db.sdbs[1]
-		if expire := sdb.expire(key); expire != -1 {
-			return time.Duration(expire)
+		if expires := sdb.getExpires(key); expires != -1 {
+			return expires
 		}
 	}
 	sdb := db.sdbs[0]
-	return time.Duration(sdb.expire(key))
+	return sdb.getExpires(key)
 }
 
 func (db *DB) SetExpire(expire time.Duration, key string) bool {
@@ -140,21 +140,18 @@ func (db *DB) ActiveExpireCycle(timelimit time.Duration) {
 			if n > activeExpireCycleLookupsPerLoop {
 				n = activeExpireCycleLookupsPerLoop
 			}
-
 			for ; n > 0; n-- {
-				e := sdb.expires.getRandomKey()
-				if sdb.activeExpireCycleTryExpire(e, time.Now()) {
+				key, val, _ := sdb.expires.randomKV()
+				if sdb.activeExpireCycleTryExpire(key, val.(time.Duration), time.Now()) {
 					expired += 1
 				}
 			}
-
 			if iteration%16 == 0 {
 				elapsed := time.Now().Sub(start)
 				if elapsed > timelimit {
 					exit = true
 				}
 			}
-
 			if expired < activeExpireCycleLookupsPerLoop/4 {
 				exit = true
 			}
@@ -182,9 +179,10 @@ func (db *DB) isThatStatus(s int32) bool {
 const dbMergeBatchNum = 1024
 
 func (db *DB) MergeIfNeeded(timeout time.Duration) error {
-	start := time.Now()
-	cnt := 0
-
+	var (
+		start = time.Now()
+		cnt   = 0
+	)
 	for {
 		if db.sdbs[1].isEmpty() {
 			db.status.Store(InNormal)
@@ -197,12 +195,12 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 				"had merged, timecost: %v\n", cnt, timeused))
 			break
 		}
-
-		num := 0
-		dels := make([]string, 0)
-
+		var (
+			num  = 0
+			dels = make([]string, 0)
+		)
 		ctx, cancel := context.WithCancel(context.TODO())
-		for e := range db.sdbs[1].Iterator(ctx) {
+		for e := range db.sdbs[1].iter(ctx) {
 			k, v := e.Key, e.Val
 			if !v.Deleted() {
 				db.sdbs[0].set(-1, k, v)
@@ -229,11 +227,17 @@ func (db *DB) MergeIfNeeded(timeout time.Duration) error {
 	return nil
 }
 
-type IterCallback func(context.Context, DBEntry) error
+type Entry struct {
+	Key     string
+	Val     *obj.Robj
+	Expires time.Duration
+}
+
+type IterCallback func(context.Context, *Entry) error
 
 // Iter iterate db while calling cb for every entry.
 func (db *DB) Iter(ctx context.Context, cb IterCallback, mode int) error {
-	for e := range db.sdbs[0].Iterator(context.Background()) {
+	for e := range db.sdbs[0].iter(ctx) {
 		if err := cb(ctx, e); err != nil {
 			return err
 		}

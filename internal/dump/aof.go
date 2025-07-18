@@ -87,7 +87,7 @@ func (aof *Aofer) closeFile() {
 }
 
 func (aof *Aofer) rewrite(ctx context.Context, timestamp int64) error {
-	fn := func(ctx context.Context, e db.DBEntry) error {
+	fn := func(ctx context.Context, e *db.Entry) error {
 		select {
 		case <-ctx.Done():
 			return errContextCanceled
@@ -110,7 +110,7 @@ func (aof *Aofer) rewrite(ctx context.Context, timestamp int64) error {
 			return errors.New("invalid type of robj in AOF file")
 		}
 
-		expire := aof.db.Expire(e.Key)
+		expire := aof.db.Expires(e.Key)
 		if expire != -1 {
 			cmd := "*3\r\n$9\r\nPEXPIREAT\r\n"
 			if _, err := aof.wr.Write([]byte(cmd)); err != nil {

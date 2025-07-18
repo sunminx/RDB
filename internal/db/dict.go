@@ -1,83 +1,51 @@
 package db
 
 import (
-	"context"
 	"crypto/rand"
 	"encoding/binary"
-	"time"
-
-	obj "github.com/sunminx/RDB/internal/object"
 )
 
-type mapDict struct {
-	dict map[string]*obj.Robj
+type dict map[string]any
+
+func newDict() dict {
+	return dict(make(map[string]any))
 }
 
-func NewMap() *mapDict {
-	return &mapDict{
-		dict: make(map[string]*obj.Robj),
-	}
-}
-
-type Entry struct {
-	Key string
-	Val *obj.Robj
-}
-
-func (e *Entry) TimeDurationVal() time.Duration {
-	t, ok := e.Val.Val().(int64)
-	if !ok {
-		return time.Duration(0)
-	}
-	return time.Duration(t)
-}
-
-func (d *mapDict) set(key string, val *obj.Robj) bool {
-	_, ok := d.dict[key]
-	d.dict[key] = val
+func (d dict) put(key string, val any) bool {
+	_, ok := d[key]
+	d[key] = val
 	return !ok
 }
 
-func (d *mapDict) add(key string, val *obj.Robj) bool {
-	_, ok := d.dict[key]
-	if ok {
-		return false
-	}
-	d.dict[key] = val
+func (d dict) replace(key string, val any) bool {
+	d[key] = val
 	return true
 }
 
-func (d *mapDict) replace(key string, val *obj.Robj) bool {
-	d.dict[key] = val
-	return true
-}
-
-func (d *mapDict) del(key string) bool {
-	_, ok := d.dict[key]
+func (d dict) remove(key string) bool {
+	_, ok := d[key]
 	if !ok {
 		return false
 	}
-	delete(d.dict, key)
+	delete(d, key)
 	return true
 }
 
-func (d *mapDict) fetchValue(key string) (*obj.Robj, bool) {
-	val, ok := d.dict[key]
+func (d dict) get(key string) (any, bool) {
+	val, ok := d[key]
 	return val, ok
 }
 
-var emptyEntry = Entry{}
-
-func (d *mapDict) getRandomKey() Entry {
+func (d dict) randomKV() (string, any, bool) {
 	times := random() % d.used()
 	n := 0
-	for key, val := range d.dict {
+	for key, val := range d {
 		if n == times {
-			return Entry{key, val}
+			return key, val, true
 		}
 		n++
 	}
-	return emptyEntry
+	return "", nil, false
 }
 
 func random() int {
@@ -93,32 +61,10 @@ func random() int {
 	return n
 }
 
-func (d *mapDict) used() int {
-	return len(d.dict)
+func (d dict) used() int {
+	return len(d)
 }
 
-func (d *mapDict) size() int {
+func (d dict) size() int {
 	return 0
-}
-
-func (d *mapDict) iterator(ctx context.Context) <-chan *Entry {
-	ch := make(chan *Entry)
-	go func() {
-		defer close(ch)
-		for k, v := range d.dict {
-			select {
-			case <-ctx.Done():
-				return
-			default:
-			}
-			ch <- &Entry{k, v}
-		}
-	}()
-	return ch
-}
-
-func (d *mapDict) empty() int {
-	ln := len(d.dict)
-	d.dict = make(map[string]*obj.Robj)
-	return ln
 }

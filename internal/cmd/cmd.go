@@ -19,7 +19,7 @@ type client interface {
 	MultiExec()
 	Size() int64
 	SetExpire(time.Duration, string) bool
-	Expire(string) time.Duration
+	Expires(string) time.Duration
 	Get(string) (*obj.Robj, bool)
 	Set(time.Duration, string, *obj.Robj) bool
 	Del(string)
