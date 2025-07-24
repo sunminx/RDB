@@ -14,6 +14,12 @@ import (
 	"github.com/sunminx/RDB/internal/sds"
 )
 
+var shared *common.Reply
+
+func init() {
+	shared = common.Shared
+}
+
 // Client flags
 type flag int
 
@@ -506,7 +512,6 @@ func (c *Client) AddReplyError(err []byte) {
 	if len(err) == 0 || err[0] != '-' {
 		c.reply = append(c.reply, []byte("-ERR ")...)
 	}
-
 	c.reply = append(c.reply, err...)
 	c.reply = append(c.reply, []byte("\r\n")...)
 }
@@ -526,9 +531,9 @@ func (c *Client) AddReplyStatus(status []byte) {
 // AddReplyInt64 output a signed, base-10, 64-bit integer to client. eg: ":0\r\n".
 func (c *Client) AddReplyInt64(n int64) {
 	if n == 0 {
-		c.AddReplyRaw(common.Reply["czero"])
+		c.AddReplyRaw(shared.RespIntZero)
 	} else if n == 1 {
-		c.AddReplyRaw(common.Reply["cone"])
+		c.AddReplyRaw(shared.RespIntOne)
 	} else {
 		s := ":" + strconv.FormatInt(n, 10) + "\r\n"
 		c.AddReplyRaw([]byte(s))
@@ -537,9 +542,9 @@ func (c *Client) AddReplyInt64(n int64) {
 
 func (c *Client) AddReplyUint64(n uint64) {
 	if n == 0 {
-		c.AddReplyRaw(common.Reply["czero"])
+		c.AddReplyRaw(shared.RespIntZero)
 	} else if n == 1 {
-		c.AddReplyRaw(common.Reply["cone"])
+		c.AddReplyRaw(shared.RespIntOne)
 	} else {
 		s := ":" + strconv.FormatUint(n, 10) + "\r\n"
 		c.AddReplyRaw([]byte(s))
@@ -568,7 +573,7 @@ func (c *Client) AddReplyBulk(robj *obj.Robj) {
 		c.AddReplyRaw([]byte("$" + strconv.Itoa(ln) + "\r\n"))
 		c.AddReplyRaw([]byte(strconv.FormatInt(val, 10)))
 	}
-	c.AddReplyRaw(common.Reply["crlf"])
+	c.AddReplyRaw([]byte("\r\n"))
 }
 
 func (c *Client) AddReplyBulkRaw(data []byte) {

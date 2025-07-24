@@ -1,7 +1,6 @@
 package cmd
 
 import (
-	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/hash"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
@@ -20,7 +19,7 @@ func genericHSetCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			cli.AddReplyRaw(shared.RespErrWrongType)
 			return ERR
 		}
 	} else {
@@ -34,8 +33,8 @@ func genericHSetCommand(cli client) bool {
 	}
 
 	cli.Set(-1, key, val)
-	cli.AddReplyStatus(common.Reply["ok"])
 	cli.AddDirty(setedNum)
+	cli.AddReplyRaw(shared.RespStrOK)
 	return OK
 }
 
@@ -44,11 +43,11 @@ func HGetCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			cli.AddReplyRaw(shared.RespErrWrongType)
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	}
 
@@ -64,11 +63,11 @@ func HDelCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			cli.AddReplyRaw(shared.RespErrWrongType)
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	}
 
@@ -87,11 +86,11 @@ func HLenCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			cli.AddReplyRaw(shared.RespErrWrongType)
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	}
 
@@ -104,18 +103,18 @@ func HExistsCommand(cli client) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
-			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			cli.AddReplyRaw(shared.RespErrWrongType)
 			return ERR
 		}
 	} else {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	}
 
 	if hash.Exists(val, argv[2]) {
-		cli.AddReplyRaw(common.Reply["cone"])
+		cli.AddReplyRaw(shared.RespIntOne)
 	} else {
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 	}
 	return OK
 }

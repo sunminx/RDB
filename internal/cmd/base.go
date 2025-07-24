@@ -3,8 +3,6 @@ package cmd
 import (
 	"strconv"
 	"time"
-
-	"github.com/sunminx/RDB/internal/common"
 )
 
 func CommandCommand(cli client) bool {
@@ -26,7 +24,7 @@ func MultiCommand(cli client) bool {
 		return ERR
 	}
 	cli.SetMulti()
-	cli.AddReplyStatus(common.Reply["ok"])
+	cli.AddReplyRaw(shared.RespStrOK)
 	return OK
 }
 
@@ -41,7 +39,7 @@ func ExecCommand(cli client) bool {
 
 func FlushAllCommand(cli client) bool {
 	_ = cli.Empty()
-	cli.AddReplyStatus(common.Reply["ok"])
+	cli.AddReplyRaw(shared.RespStrOK)
 	return OK
 }
 
@@ -77,7 +75,7 @@ const (
 func expireGenericCommand(cli client, basetime *time.Time, unit int) bool {
 	key := cli.Key()
 	if _, exists := cli.Get(key); !exists {
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 		return ERR
 	}
 
@@ -85,7 +83,7 @@ func expireGenericCommand(cli client, basetime *time.Time, unit int) bool {
 	if expires != -1 && time.Now().After(time.UnixMilli(expires)) {
 		cli.Del(key)
 		cli.AddDirty(1)
-		cli.AddReplyRaw(common.Reply["cnone"])
+		cli.AddReplyRaw(shared.RespIntOne)
 		return ERR
 	}
 
@@ -109,9 +107,9 @@ func expireGenericCommand(cli client, basetime *time.Time, unit int) bool {
 
 	// Invalid expire timestamp will cause the key to be deleted immediately.
 	if ok := cli.SetExpire(time.Duration(expires), key); ok {
-		cli.AddReplyRaw(common.Reply["cone"])
+		cli.AddReplyRaw(shared.RespIntOne)
 	} else {
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 	}
 	return OK
 }

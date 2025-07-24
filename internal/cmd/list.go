@@ -3,7 +3,6 @@ package cmd
 import (
 	"strconv"
 
-	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/list"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
@@ -27,7 +26,7 @@ func pushGenericCommand(cli client, where int8) bool {
 	val, exists := cli.Get(key)
 	if exists {
 		if !val.CheckType(obj.TypeList) {
-			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			cli.AddReplyRaw(shared.RespErrWrongType)
 			return ERR
 		}
 	} else {
@@ -63,10 +62,10 @@ func popGenericCommand(cli client, where int8) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 
@@ -80,7 +79,7 @@ func popGenericCommand(cli client, where int8) bool {
 		robj := sds.NewRobj(entries[0])
 		cli.AddReplyBulk(robj)
 	} else {
-		cli.AddReplyRaw(common.Reply["bullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 	}
 	cli.AddDirty(1)
 	return OK
@@ -90,16 +89,16 @@ func LIndexCommand(cli client) bool {
 	key, argv := cli.Key(), cli.Argv()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 
 	idx, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Reply["invalidindex"])
+		cli.AddReplyRaw(shared.RespErrInvalidIndex)
 		return ERR
 	}
 	entry, ok := list.Index(val, idx)
@@ -115,10 +114,10 @@ func LLenCommand(cli client) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 	llen := list.Cnt(val)
@@ -130,10 +129,10 @@ func LTrimCommand(cli client) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 
@@ -141,16 +140,16 @@ func LTrimCommand(cli client) bool {
 
 	start, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Reply["invalidindex"])
+		cli.AddReplyRaw(shared.RespErrInvalidIndex)
 		return ERR
 	}
 	end, err := strconv.ParseUint(string(argv[3]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Reply["invalidindex"])
+		cli.AddReplyRaw(shared.RespErrInvalidIndex)
 		return ERR
 	}
 	list.Trim(val, start, end)
-	cli.AddReplyStatus(common.Reply["ok"])
+	cli.AddReplyRaw(shared.RespStrOK)
 	return OK
 }
 
@@ -158,10 +157,10 @@ func LSetCommand(cli client) bool {
 	key := cli.Key()
 	val, exists := cli.Get(key)
 	if !exists {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	} else if !val.CheckType(obj.TypeList) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 
@@ -169,11 +168,11 @@ func LSetCommand(cli client) bool {
 
 	index, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
-		cli.AddReplyError(common.Reply["invalidindex"])
+		cli.AddReplyRaw(shared.RespErrInvalidIndex)
 		return ERR
 	}
 
 	list.Set(val, index-1, argv[3])
-	cli.AddReplyStatus(common.Reply["ok"])
+	cli.AddReplyRaw(shared.RespStrOK)
 	return OK
 }

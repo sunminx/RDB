@@ -3,8 +3,15 @@ package cmd
 import (
 	"time"
 
+	"github.com/sunminx/RDB/internal/common"
 	obj "github.com/sunminx/RDB/internal/object"
 )
+
+var shared *common.Reply
+
+func init() {
+	shared = common.Shared
+}
 
 const (
 	OK  = true

@@ -7,7 +7,6 @@ import (
 	"strconv"
 	"time"
 
-	"github.com/sunminx/RDB/internal/common"
 	"github.com/sunminx/RDB/internal/object"
 	obj "github.com/sunminx/RDB/internal/object"
 	"github.com/sunminx/RDB/internal/sds"
@@ -29,12 +28,12 @@ func GetCommand(cli client) bool {
 	)
 	robj, ok := cli.Get(key)
 	if !ok {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return OK
 	}
 
 	if robj.Type() != obj.TypeString {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 
@@ -53,7 +52,7 @@ func MGetCommand(cli client) bool {
 		if ok {
 			cli.AddReplyBulk(val)
 		} else {
-			cli.AddReplyRaw(common.Reply["nullbulk"])
+			cli.AddReplyRaw(shared.RespBulkNull)
 		}
 	}
 	return OK
@@ -138,7 +137,7 @@ func msetGerenicCommand(cli client, flag setFlag) bool {
 	if flag&objSetNx != 0 {
 		for i := 1; i < size; i += 2 {
 			if _, ok := cli.Get(string(argv[i])); ok {
-				cli.AddReplyRaw(common.Reply["czero"])
+				cli.AddReplyRaw(shared.RespIntZero)
 				return ERR
 			}
 		}
@@ -150,9 +149,9 @@ func msetGerenicCommand(cli client, flag setFlag) bool {
 
 	cli.AddDirty((size - 1) / 2)
 	if flag&objSetNx != 0 {
-		cli.AddReplyRaw(common.Reply["cone"])
+		cli.AddReplyRaw(shared.RespIntOne)
 	} else {
-		cli.AddReplyStatus(common.Reply["ok"])
+		cli.AddReplyRaw(shared.RespStrOK)
 	}
 	return OK
 }
@@ -166,7 +165,7 @@ func AppendCommand(cli client) bool {
 		goto reply
 	}
 	if !val.CheckType(obj.TypeString) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 	sds.Append(val, argv[2])
@@ -188,13 +187,13 @@ func setGenericCommand(cli client, flag setFlag, key string, val []byte,
 		expire += time.Now().UnixMilli()
 	}
 	if _, ok := cli.Get(key); ok && flag&objSetNx != 0 || !ok && flag&objSetXx != 0 {
-		cli.AddReplyRaw(common.Reply["nullbulk"])
+		cli.AddReplyRaw(shared.RespBulkNull)
 		return false
 	}
 	cli.Set(time.Duration(expire), key, sds.NewRobj(val))
 	cli.AddDirty(1)
 	if replyInOk {
-		cli.AddReplyStatus(common.Reply["ok"])
+		cli.AddReplyRaw(shared.RespStrOK)
 	}
 	return true
 }
@@ -203,11 +202,11 @@ func StrlenCommand(cli client) bool {
 	key := cli.Key()
 	val, ok := cli.Get(key)
 	if !ok {
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 		return OK
 	}
 	if !val.CheckType(obj.TypeString) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return OK
 	}
 	cli.AddReplyInt64(sds.Len(val))
@@ -250,7 +249,7 @@ func DecrCommand(cli client) bool {
 func incrdecrCommand(cli client, key string, n int64) bool {
 	val, ok := cli.Get(key)
 	if !ok || !val.CheckType(obj.TypeString) {
-		cli.AddReplyError(common.Reply["wrongtypeerr"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 	cli.AddReplyInt64(sds.Incr(val, n))
@@ -288,9 +287,9 @@ func SetBitCommand(cli client) bool {
 
 	// oldBit is not zero means the bit is 1 before set operation.
 	if oldBit != 0 {
-		cli.AddReplyRaw(common.Reply["cone"])
+		cli.AddReplyRaw(shared.RespIntOne)
 	} else {
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 	}
 	return OK
 }
@@ -308,7 +307,7 @@ func GetBitCommand(cli client) bool {
 	}
 	obj, ok := cli.Get(key)
 	if !ok || !obj.CheckType(object.TypeString) {
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 		return ERR
 	}
 
@@ -319,7 +318,7 @@ func GetBitCommand(cli client) bool {
 	case object.EncodingInt:
 		val = []byte(fmt.Sprintf("%d", obj.Val().(int64)))
 	default:
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 		return ERR
 
 	}
@@ -328,9 +327,9 @@ func GetBitCommand(cli client) bool {
 
 	// bit is not zero means the bit is 1 before set operation.
 	if bit != 0 {
-		cli.AddReplyRaw(common.Reply["cone"])
+		cli.AddReplyRaw(shared.RespIntOne)
 	} else {
-		cli.AddReplyRaw(common.Reply["czero"])
+		cli.AddReplyRaw(shared.RespIntZero)
 	}
 	return OK
 }
@@ -453,7 +452,7 @@ func SetRangeCommand(cli client) bool {
 	obj, ok := cli.Get(key)
 	if !ok {
 		if newValLen == 0 {
-			cli.AddReplyRaw(common.Reply["czero"])
+			cli.AddReplyRaw(shared.RespIntZero)
 			return OK
 		}
 		if offset+newValLen > 512*1024*1024 {
@@ -464,7 +463,7 @@ func SetRangeCommand(cli client) bool {
 		_ = cli.Set(-1, key, obj)
 	} else {
 		if !obj.CheckType(object.TypeString) {
-			cli.AddReplyError(common.Reply["wrongtypeerr"])
+			cli.AddReplyRaw(shared.RespErrWrongType)
 			return ERR
 		}
 		if newValLen == 0 {
@@ -503,11 +502,11 @@ func GetRangeCommand(cli client) bool {
 	}
 	obj, ok := cli.Get(key)
 	if !ok {
-		cli.AddReplyRaw(common.Reply["emptybulk"])
+		cli.AddReplyRaw(shared.RespBulkEmpty)
 		return ERR
 	}
 	if !obj.CheckType(object.TypeString) {
-		cli.AddReplyError(common.Reply["wrongtype"])
+		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
 
