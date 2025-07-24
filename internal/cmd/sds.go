@@ -17,11 +17,17 @@ type setFlag int
 
 const (
 	objSetNoFlag setFlag = 0
-	objSetNx             = 1 << iota
+	objSetNx     setFlag = 1 << iota
+	objSetXx
+	objSetEx
+	objSetPx
 )
 
 func GetCommand(cli client) bool {
-	robj, ok := cli.Get(cli.Key())
+	var (
+		key = cli.Key()
+	)
+	robj, ok := cli.Get(key)
 	if !ok {
 		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return OK
@@ -54,30 +60,62 @@ func MGetCommand(cli client) bool {
 }
 
 func SetCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
-	for i := 2; i < len(argv); i++ {
-		_ = setGenericCommand(cli, objSetNoFlag, key, argv[i], nil)
+	var (
+		flags     = objSetNoFlag
+		expireArg = []byte{}
+		unit      = unitNone
+		argv      = cli.Argv()
+	)
+	for i := 3; i < len(argv); i++ {
+		a := argv[i]
+		if len(a) == 2 && (a[0] == 'n' || a[0] == 'N') &&
+			(a[1] == 'x' || a[1] == 'X') && flags&objSetXx == 0 {
+			flags |= objSetNx
+		} else if len(a) == 2 && (a[0] == 'x' || a[0] == 'X') &&
+			(a[1] == 'x' || a[1] == 'X') && flags&objSetNx == 0 {
+			flags |= objSetXx
+		} else if len(a) == 2 && (a[0] == 'e' || a[0] == 'E') &&
+			(a[1] == 'x' || a[1] == 'X') && (i+1) < len(argv) && flags&objSetPx == 0 {
+			flags |= objSetEx
+			expireArg = argv[i+1]
+			unit = unitSeconds
+			i++
+		} else if len(a) == 2 && (a[0] == 'p' || a[0] == 'P') &&
+			(a[1] == 'x' || a[1] == 'X') && (i+1) < len(argv) && flags&objSetEx == 0 {
+			flags |= objSetPx
+			expireArg = argv[i+1]
+			unit = unitMilliseconds
+			i++
+		}
 	}
-	cli.AddReplyStatus(common.Reply["ok"])
-	return OK
+	key := cli.Key()
+	expire := int64(-1)
+	if len(expireArg) > 0 {
+		var err error
+		expire, err = strconv.ParseInt(string(expireArg), 10, 64)
+		if err != nil {
+			cli.AddReplyError([]byte("invalid expire time in " + key))
+			return ERR
+		}
+	}
+	return setGenericCommand(cli, flags, key, argv[2], expire, unit, true)
 }
 
 func SetNxCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
-	ok := setGenericCommand(cli, objSetNx, key, argv[2], nil)
-	if !ok {
-		cli.AddReplyRaw(common.Reply["czero"])
-	} else {
-		cli.AddReplyStatus(common.Reply["ok"])
-	}
-	return OK
+	argv := cli.Argv()
+	return setGenericCommand(cli, objSetNx, cli.Key(), argv[2], -1, unitNone, true)
 }
 
 func SetExCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
-	_ = setGenericCommand(cli, objSetNoFlag, key, argv[3], argv[2])
-	cli.AddReplyStatus(common.Reply["ok"])
-	return OK
+	argv := cli.Argv()
+	expire := int64(-1)
+	var err error
+	expire, err = strconv.ParseInt(string(argv[2]), 10, 64)
+	if err != nil {
+		cli.AddReplyError([]byte("invalid expire time in " + cli.Key()))
+		return ERR
+	}
+	return setGenericCommand(cli, objSetEx, cli.Key(), argv[3], expire, unitSeconds, true)
 }
 
 func MSetCommand(cli client) bool {
@@ -120,46 +158,44 @@ func msetGerenicCommand(cli client, flag setFlag) bool {
 }
 
 func AppendCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
+	key := cli.Key()
+	argv := cli.Argv()
 	val, ok := cli.Get(key)
 	if !ok {
-		_ = setGenericCommand(cli, objSetNoFlag, key, argv[2], nil)
-		return OK
+		_ = setGenericCommand(cli, objSetEx, key, argv[2], -1, unitSeconds, false)
+		goto reply
 	}
 	if !val.CheckType(obj.TypeString) {
 		cli.AddReplyError(common.Reply["wrongtypeerr"])
 		return ERR
 	}
-
 	sds.Append(val, argv[2])
-	_ = setGenericCommand(cli, objSetNoFlag, key, val.Val().(sds.SDS), nil)
-
-	cli.AddReplyBulk(val)
+	_ = setGenericCommand(cli, objSetEx, key, val.Val().(sds.SDS), -1, unitSeconds, false)
+reply:
+	ln := val.Val().(sds.SDS).Len()
+	cli.AddReplyInt64(int64(ln))
 	return OK
 }
 
-func setGenericCommand(cli client, flag setFlag, key string, val, expiresParam []byte) bool {
-	expires := int64(-1)
-	if expiresParam != nil {
-		var err error
-		expires, err = strconv.ParseInt(string(expiresParam), 10, 64)
-		if err != nil || expires <= 0 {
-			cli.AddReplyError([]byte("invalid expire param"))
-			return true
+func setGenericCommand(cli client, flag setFlag, key string, val []byte,
+	expire int64, unit int, replyInOk bool) bool {
+	if expire > 0 {
+		factor := int64(1e3)
+		if unit == unitMilliseconds {
+			factor = 1
 		}
-		expires *= 1e3
+		expire *= factor
+		expire += time.Now().UnixMilli()
 	}
-
-	if expires != -1 {
-		expires += time.Now().UnixMilli()
-	}
-
-	if _, exists := cli.Get(key); exists && (flag&objSetNx) != 0 {
+	if _, ok := cli.Get(key); ok && flag&objSetNx != 0 || !ok && flag&objSetXx != 0 {
+		cli.AddReplyRaw(common.Reply["nullbulk"])
 		return false
 	}
-
-	cli.Set(time.Duration(expires), key, sds.NewRobj(val))
+	cli.Set(time.Duration(expire), key, sds.NewRobj(val))
 	cli.AddDirty(1)
+	if replyInOk {
+		cli.AddReplyStatus(common.Reply["ok"])
+	}
 	return true
 }
 

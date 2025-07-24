@@ -69,7 +69,8 @@ func PExpireAtCommand(cli client) bool {
 }
 
 const (
-	unitSeconds int = iota + 1
+	unitNone int = iota
+	unitSeconds
 	unitMilliseconds
 )
 
