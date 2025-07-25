@@ -59,8 +59,7 @@ func HGetCommand(cli client) bool {
 }
 
 func HDelCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.Get(key)
+	val, exists := cli.Get(cli.Key())
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
 			cli.AddReplyRaw(shared.RespErrWrongType)
@@ -71,6 +70,7 @@ func HDelCommand(cli client) bool {
 		return ERR
 	}
 
+	argv := cli.Argv()
 	deletedNum := 0
 	for i := 2; i < len(argv); i++ {
 		hash.Del(val, argv[i])
@@ -93,14 +93,12 @@ func HLenCommand(cli client) bool {
 		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
 	}
-
 	cli.AddReplyInt64(hash.Len(val))
 	return OK
 }
 
 func HExistsCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.Get(key)
+	val, exists := cli.Get(cli.Key())
 	if exists {
 		if !val.CheckType(obj.TypeHash) {
 			cli.AddReplyRaw(shared.RespErrWrongType)
@@ -111,6 +109,7 @@ func HExistsCommand(cli client) bool {
 		return ERR
 	}
 
+	argv := cli.Argv()
 	if hash.Exists(val, argv[2]) {
 		cli.AddReplyRaw(shared.RespIntOne)
 	} else {

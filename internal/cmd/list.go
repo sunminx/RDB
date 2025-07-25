@@ -59,8 +59,7 @@ func LPopCommand(cli client) bool {
 }
 
 func popGenericCommand(cli client, where int8) bool {
-	key := cli.Key()
-	val, exists := cli.Get(key)
+	val, exists := cli.Get(cli.Key())
 	if !exists {
 		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
@@ -86,8 +85,7 @@ func popGenericCommand(cli client, where int8) bool {
 }
 
 func LIndexCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
-	val, exists := cli.Get(key)
+	val, exists := cli.Get(cli.Key())
 	if !exists {
 		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
@@ -95,7 +93,7 @@ func LIndexCommand(cli client) bool {
 		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
-
+	argv := cli.Argv()
 	idx, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyRaw(shared.RespErrInvalidIndex)
@@ -111,8 +109,7 @@ func LIndexCommand(cli client) bool {
 }
 
 func LLenCommand(cli client) bool {
-	key := cli.Key()
-	val, exists := cli.Get(key)
+	val, exists := cli.Get(cli.Key())
 	if !exists {
 		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
@@ -126,8 +123,7 @@ func LLenCommand(cli client) bool {
 }
 
 func LTrimCommand(cli client) bool {
-	key := cli.Key()
-	val, exists := cli.Get(key)
+	val, exists := cli.Get(cli.Key())
 	if !exists {
 		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
@@ -154,8 +150,7 @@ func LTrimCommand(cli client) bool {
 }
 
 func LSetCommand(cli client) bool {
-	key := cli.Key()
-	val, exists := cli.Get(key)
+	val, exists := cli.Get(cli.Key())
 	if !exists {
 		cli.AddReplyRaw(shared.RespBulkNull)
 		return ERR
@@ -163,15 +158,12 @@ func LSetCommand(cli client) bool {
 		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
-
 	argv := cli.Argv()
-
 	index, err := strconv.ParseUint(string(argv[2]), 10, 64)
 	if err != nil {
 		cli.AddReplyRaw(shared.RespErrInvalidIndex)
 		return ERR
 	}
-
 	list.Set(val, index-1, argv[3])
 	cli.AddReplyRaw(shared.RespStrOK)
 	return OK

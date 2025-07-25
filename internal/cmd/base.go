@@ -6,15 +6,6 @@ import (
 )
 
 func CommandCommand(cli client) bool {
-	argv := cli.Argv()
-	argc := len(argv)
-
-	if argc >= 2 {
-
-	} else if argc == 1 {
-
-	}
-
 	return OK
 }
 
@@ -93,18 +84,14 @@ func expireGenericCommand(cli client, basetime *time.Time, unit int) bool {
 		cli.AddReplyError([]byte("invalid expire param"))
 		return ERR
 	}
-
 	if unit == unitSeconds {
 		expires *= 1e3
 	}
-
 	// Basetime is not nil that means expire param is not a timestamp.
 	if basetime != nil {
 		expires += basetime.UnixMilli()
 	}
-
 	cli.AddDirty(1)
-
 	// Invalid expire timestamp will cause the key to be deleted immediately.
 	if ok := cli.SetExpire(time.Duration(expires), key); ok {
 		cli.AddReplyRaw(shared.RespIntOne)

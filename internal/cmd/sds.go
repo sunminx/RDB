@@ -23,20 +23,15 @@ const (
 )
 
 func GetCommand(cli client) bool {
-	var (
-		key = cli.Key()
-	)
-	robj, ok := cli.Get(key)
+	robj, ok := cli.Get(cli.Key())
 	if !ok {
 		cli.AddReplyRaw(shared.RespBulkNull)
 		return OK
 	}
-
 	if robj.Type() != obj.TypeString {
 		cli.AddReplyRaw(shared.RespErrWrongType)
 		return ERR
 	}
-
 	cli.AddReplyBulk(robj)
 	return OK
 }
@@ -44,9 +39,7 @@ func GetCommand(cli client) bool {
 func MGetCommand(cli client) bool {
 	argv := cli.Argv()
 	size := len(argv) - 1
-
 	cli.AddReplyMultibulkLen(int64(size))
-
 	for i := 1; i < len(argv); i++ {
 		val, ok := cli.Get(string(argv[i]))
 		if ok {
@@ -131,12 +124,10 @@ func MSetNxCommand(cli client) bool {
 func msetGerenicCommand(cli client, flag setFlag) bool {
 	argv := cli.Argv()
 	size := len(argv)
-
 	if size%2 == 0 {
 		cli.AddReplyError([]byte("wrong number of arguments for MSET"))
 		return ERR
 	}
-
 	if flag&objSetNx != 0 {
 		for i := 1; i < size; i += 2 {
 			if _, ok := cli.Get(string(argv[i])); ok {
@@ -145,11 +136,9 @@ func msetGerenicCommand(cli client, flag setFlag) bool {
 			}
 		}
 	}
-
 	for i := 1; i < size; i += 2 {
 		_ = cli.Set(-1, string(argv[i]), sds.NewRobj(argv[i+1]))
 	}
-
 	cli.AddDirty((size - 1) / 2)
 	if flag&objSetNx != 0 {
 		cli.AddReplyRaw(shared.RespIntOne)
@@ -202,8 +191,7 @@ func setGenericCommand(cli client, flag setFlag, key string, val []byte,
 }
 
 func StrlenCommand(cli client) bool {
-	key := cli.Key()
-	val, ok := cli.Get(key)
+	val, ok := cli.Get(cli.Key())
 	if !ok {
 		cli.AddReplyRaw(shared.RespIntZero)
 		return OK
@@ -236,7 +224,6 @@ func ExistsCommand(cli client) bool {
 			numexists += 1
 		}
 	}
-
 	cli.AddReplyInt64(numexists)
 	return OK
 }
@@ -287,7 +274,6 @@ func SetBitCommand(cli client) bool {
 	if err := setStringForBitCommand(cli, key, val); err != nil {
 		cli.AddReplyError([]byte(err.Error()))
 	}
-
 	// oldBit is not zero means the bit is 1 before set operation.
 	if oldBit != 0 {
 		cli.AddReplyRaw(shared.RespIntOne)
@@ -323,11 +309,8 @@ func GetBitCommand(cli client) bool {
 	default:
 		cli.AddReplyRaw(shared.RespIntZero)
 		return ERR
-
 	}
-
 	bit := getBit(val, off)
-
 	// bit is not zero means the bit is 1 before set operation.
 	if bit != 0 {
 		cli.AddReplyRaw(shared.RespIntOne)
@@ -342,11 +325,9 @@ func getBitOffsetFromArgument(val []byte) (uint64, error) {
 	if err != nil {
 		return 0, nil
 	}
-
 	if off < 0 || (off>>3) > (512*1024*1024) {
 		return 0, errors.New("invalid bit offset")
 	}
-
 	return uint64(off), nil
 }
 
@@ -494,7 +475,7 @@ func SetRangeCommand(cli client) bool {
 }
 
 func GetRangeCommand(cli client) bool {
-	key, argv := cli.Key(), cli.Argv()
+	argv := cli.Argv()
 	start, ok := getIntFromArgvOrReply(cli, argv[2])
 	if !ok {
 		return ERR
@@ -503,7 +484,7 @@ func GetRangeCommand(cli client) bool {
 	if !ok {
 		return ERR
 	}
-	obj, ok := cli.Get(key)
+	obj, ok := cli.Get(cli.Key())
 	if !ok {
 		cli.AddReplyRaw(shared.RespBulkEmpty)
 		return ERR
