@@ -85,6 +85,9 @@ func SetCommand(cli client) bool {
 			expireArg = argv[i+1]
 			unit = unitMilliseconds
 			i++
+		} else {
+			cli.AddReplyRaw(shared.RespErrSyntax)
+			return ERR
 		}
 	}
 	key := cli.Key()
