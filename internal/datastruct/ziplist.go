@@ -388,8 +388,6 @@ func (zl *Ziplist) insert(offset uint32, content []byte) {
 }
 
 func (zl *Ziplist) InsertEncoded(offset uint32, encoded []byte, _len uint16, headPrevLen, tailLen uint32) {
-	// 头部插入 更新原来第一个entry的prevlen
-	// 尾部插入 更新插入的encoded的第一个entry的prevlen
 	encodedLen := uint32(len(encoded))
 	prevLen := zl.PrevLen(offset)
 	if !zl.atEnd(offset) {
