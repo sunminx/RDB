@@ -18,6 +18,9 @@ type Skiplist struct {
 	compare      Compare
 }
 
+func (s *Skiplist) Length() uint64 { return s.length }
+func (s *Skiplist) Level() int     { return s.level }
+
 // Compare compares e1 and e2. The result will be 0 if e1 == e2,
 // -1 if e1 < e2, and +1 if e1 > e2.
 type Compare func(e1, e2 any) int
@@ -46,10 +49,6 @@ func NewSkiplist(compare Compare) *Skiplist {
 	zsl.length = 0
 	zsl.compare = compare
 	return zsl
-}
-
-func (s *Skiplist) Length() uint64 {
-	return s.length
 }
 
 // Insert insert an new node.
