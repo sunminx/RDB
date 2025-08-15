@@ -28,8 +28,8 @@ func TestZipStrSize(t *testing.T) {
 	testcases := []struct {
 		_type       byte
 		encoding    []byte
-		lensizeWant int32
-		lnWant      int32
+		lensizeWant uint32
+		lnWant      uint32
 	}{
 		{zipStr06b, []byte{0b00111111}, 1, 63},
 		{zipStr06b, []byte{0b00000001}, 1, 1},
@@ -52,7 +52,7 @@ func TestZipStrSize(t *testing.T) {
 func TestZipStrEncoding(t *testing.T) {
 	testcases := []struct {
 		input            []byte
-		encodingsizeWant int32
+		encodingsizeWant uint32
 		encoding         []byte
 	}{
 		{[]byte("hello"), 1, []byte{0b00000101}},
@@ -88,8 +88,8 @@ func TestZiplistPop(t *testing.T) {
 	zl.Push([]byte("123456"))
 	zl.Push([]byte(strings.Repeat("jim", 2345)))
 	zl.PopLeft()
-	t.Log(zl.Zllen())
-	t.Log(zl.Zlbytes())
+	t.Log(zl.Len())
+	t.Log(zl.Bytes())
 	entry, ok := zl.Index(1)
 	if ok {
 		t.Log(string(entry))
