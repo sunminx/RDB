@@ -1,28 +1,28 @@
-package db
+package datastruct
 
 import (
 	"crypto/rand"
 	"encoding/binary"
 )
 
-type dict map[string]any
+type Dict map[string]any
 
-func newDict() dict {
-	return dict(make(map[string]any))
+func NewDict() Dict {
+	return Dict(make(map[string]any))
 }
 
-func (d dict) put(key string, val any) bool {
+func (d Dict) Put(key string, val any) bool {
 	_, ok := d[key]
 	d[key] = val
 	return !ok
 }
 
-func (d dict) replace(key string, val any) bool {
+func (d Dict) Replace(key string, val any) bool {
 	d[key] = val
 	return true
 }
 
-func (d dict) remove(key string) bool {
+func (d Dict) Remove(key string) bool {
 	_, ok := d[key]
 	if !ok {
 		return false
@@ -31,13 +31,13 @@ func (d dict) remove(key string) bool {
 	return true
 }
 
-func (d dict) get(key string) (any, bool) {
+func (d Dict) Get(key string) (any, bool) {
 	val, ok := d[key]
 	return val, ok
 }
 
-func (d dict) randomKV() (string, any, bool) {
-	times := random() % d.used()
+func (d Dict) RandomKV() (string, any, bool) {
+	times := random() % d.Used()
 	n := 0
 	for key, val := range d {
 		if n == times {
@@ -61,10 +61,10 @@ func random() int {
 	return n
 }
 
-func (d dict) used() int {
+func (d Dict) Used() int {
 	return len(d)
 }
 
-func (d dict) size() int {
+func (d Dict) Size() int {
 	return 0
 }
