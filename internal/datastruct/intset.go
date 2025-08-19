@@ -12,6 +12,8 @@ const (
 )
 
 // IntSet stores integer values in order using contiguous memory space.
+// A balance can be struck between memory storage and search efficiency when the length
+// of an intset is small.
 type IntSet struct {
 	encoding int
 	length   int
@@ -117,20 +119,20 @@ func (s *IntSet) search(val int64) (int, bool) {
 		}
 	}
 	if val == cur {
-		return mid*s.encoding, true
+		return mid * s.encoding, true
 	}
-	return lo*s.encoding, false
+	return lo * s.encoding, false
 }
 
 func (s *IntSet) set(pos int, val int64) {
 	// Scale up the capacity of contiguous space if needed.
-	if s.encoding * (s.length+1) >= cap(s.content) {
+	if s.encoding*(s.length+1) >= cap(s.content) {
 		content := make([]byte, s.encoding*(s.length+1))
 		copy(content, s.content)
 		s.content = content
 	}
 	// Move all elemtent after the position backward by the encoding distance.
-	if pos < s.encoding * s.length { 
+	if pos < s.encoding*s.length {
 		copy(s.content[pos+s.encoding:], s.content[pos:])
 	}
 	b := s.content[pos : pos+s.encoding]
@@ -196,7 +198,7 @@ func intsetEleEncoding(b []byte) int {
 		if b[3] == 0 && b[2] == 0 {
 			return IntSetEncInt16
 		}
-		return IntSetEncInt32	
+		return IntSetEncInt32
 	}
 	return IntSetEncInt16
 }
