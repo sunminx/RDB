@@ -11,6 +11,13 @@ import (
 	obj "github.com/sunminx/RDB/internal/object"
 )
 
+// Skiplist is a collection of multiple ordered linked lists.
+// The higher the level, the sparser the linked list becomes. The lowest-level linked-
+// list contains all the elements.
+// Node in a skiplist support backtracking, jumping to the lower-level linked list.
+// Fast query is the most significant advantage of a skiplist. It uses a higher-level
+// linked list to quickly approach the target element, and a lower-level linked list to
+// find the target element.
 type Skiplist struct {
 	header, tail *skiplistNode
 	level        int
