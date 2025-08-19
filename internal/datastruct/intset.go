@@ -5,9 +5,10 @@ import (
 )
 
 const (
-	IntSetEncInt16 = 1 << (iota + 1)
-	IntSetEncInt32 = 1 << (iota + 1)
-	IntSetEncInt64 = 1 << (iota + 1)
+	IntSetEncInt16   = 1 << (iota + 1)
+	IntSetEncInt32   = 1 << (iota + 1)
+	IntSetEncInt64   = 1 << (iota + 1)
+	IntSetEncUnknown = 0
 )
 
 // IntSet stores integer values in order using contiguous memory space.
@@ -19,9 +20,9 @@ type IntSet struct {
 
 func NewIntSet() *IntSet {
 	return &IntSet{
-		encoding: IntSetEncInt16,
+		encoding: IntSetEncUnknown,
 		length:   0,
-		content:  make([]byte, 0, 1024),
+		content:  nil,
 	}
 }
 
@@ -31,12 +32,15 @@ func (s *IntSet) Length() int   { return s.length }
 // Add inserts an integer value int the intset.
 func (s *IntSet) Add(val int64) bool {
 	valenc := intsetValEncoding(val)
-	//if valenc > s.encoding {
-	s.upgrade(valenc)
-	//}
+	if valenc > s.encoding {
+		s.upgrade(valenc)
+	}
 	pos := 0
 	for i := 0; i < s.length; i++ {
-		if val < s.get(pos) {
+		nval := s.get(pos)
+		if nval == val {
+			return true
+		} else if val < nval {
 			break
 		}
 		pos += s.encoding
@@ -49,7 +53,7 @@ func (s *IntSet) Add(val int64) bool {
 // Remove deletes the integer val from intset.
 func (s *IntSet) Remove(val int64) bool {
 	enc := intsetValEncoding(val)
-	if enc != s.encoding {
+	if enc > s.encoding {
 		return false
 	}
 	pos, ok := s.search(val)
@@ -81,14 +85,14 @@ func (s *IntSet) Find(val int64) bool {
 	return ok
 }
 
-func (s *IntSet) upgrade(newEnc int) {
-	content := make([]byte, newEnc*(s.length+1))
+func (s *IntSet) upgrade(newenc int) {
+	content := make([]byte, newenc*(s.length+1)*2)
 	dst := content
 	for i := 0; i < s.length; i++ {
 		copy(dst, s.content[i*s.encoding:(i+1)*s.encoding])
-		dst = dst[(i+1)*newEnc:]
+		dst = dst[newenc:]
 	}
-	s.encoding = newEnc
+	s.encoding = newenc
 	s.content = content
 }
 
@@ -113,13 +117,20 @@ func (s *IntSet) search(val int64) (int, bool) {
 		}
 	}
 	if val == cur {
-		return mid, true
+		return mid*s.encoding, true
 	}
-	return lo, false
+	return lo*s.encoding, false
 }
 
 func (s *IntSet) set(pos int, val int64) {
-	if pos < s.length*s.encoding {
+	// Scale up the capacity of contiguous space if needed.
+	if s.encoding * (s.length+1) >= cap(s.content) {
+		content := make([]byte, s.encoding*(s.length+1))
+		copy(content, s.content)
+		s.content = content
+	}
+	// Move all elemtent after the position backward by the encoding distance.
+	if pos < s.encoding * s.length { 
 		copy(s.content[pos+s.encoding:], s.content[pos:])
 	}
 	b := s.content[pos : pos+s.encoding]
@@ -141,20 +152,23 @@ func (s *IntSet) set(pos int, val int64) {
 }
 
 func (s *IntSet) get(pos int) int64 {
-	v := uint64(0)
+	v := int64(0)
 	b := s.content[pos : pos+s.encoding]
-	if s.encoding >= IntSetEncInt16 {
-		v = uint64(b[0]) + uint64(b[1])<<8
+	// Get the exact encoded length of the element.
+	// Beause of the position of the symbol bit we have to know.
+	enc := intsetEleEncoding(b)
+	if enc == IntSetEncInt16 {
+		v = int64(b[0]) + int64(int8(b[1]))<<8
+	} else if enc == IntSetEncInt32 {
+		v = int64(b[0]) + int64(b[1])<<8
+		v += int64(b[2])<<16 + int64(int8(b[3]))<<24
+	} else if enc == IntSetEncInt64 {
+		v = int64(b[0]) + int64(b[1])<<8
+		v += int64(b[2])<<16 + int64(b[3])<<24
+		v += int64(b[4])<<32 + int64(b[5])<<40
+		v += int64(b[6])<<48 + int64(int8(b[7]))<<56
 	}
-	if s.encoding >= IntSetEncInt32 {
-		v |= uint64(b[2])<<16 + uint64(b[3])<<24
-
-	}
-	if s.encoding >= IntSetEncInt64 {
-		v |= uint64(b[4])<<32 + uint64(b[5])<<40
-		v |= uint64(b[6])<<48 + uint64(b[7])<<56
-	}
-	return int64(v)
+	return v
 }
 
 func intsetValEncoding(val int64) int {
@@ -163,6 +177,26 @@ func intsetValEncoding(val int64) int {
 	}
 	if val < math.MinInt16 || val > math.MaxInt16 {
 		return IntSetEncInt32
+	}
+	return IntSetEncInt16
+}
+
+func intsetEleEncoding(b []byte) int {
+	if len(b) == IntSetEncInt64 {
+		if b[7] == 0 && b[6] == 0 &&
+			b[5] == 0 && b[4] == 0 {
+			if b[3] == 0 && b[2] == 0 {
+				return IntSetEncInt16
+			}
+			return IntSetEncInt32
+		}
+		return IntSetEncInt64
+	}
+	if len(b) == IntSetEncInt32 {
+		if b[3] == 0 && b[2] == 0 {
+			return IntSetEncInt16
+		}
+		return IntSetEncInt32	
 	}
 	return IntSetEncInt16
 }
