@@ -7,6 +7,8 @@ const (
 	TypeString
 	TypeList
 	TypeHash
+	TypeSet
+	TypeZSet
 )
 
 type EncodingType int
@@ -18,6 +20,8 @@ const (
 	EncodingZiplist
 	EncodingQuicklist
 	EncodingZipmap
+	EncodingIntset
+	EncodingDict
 )
 
 type Robj struct {
