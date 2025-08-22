@@ -7,99 +7,103 @@ import (
 )
 
 type Zipmap struct {
-	*ds.Ziplist
+	zl *ds.Ziplist
 }
 
 func NewZipmap() *Zipmap {
-	return &Zipmap{ds.NewZiplist()}
+	return &Zipmap{zl: ds.NewZiplist()}
 }
 
+func (zm *Zipmap) SetZl(zl *ds.Ziplist) { zm.zl = zl }
+func (zm *Zipmap) Zl() *ds.Ziplist      { return zm.zl }
+func (zm *Zipmap) Len() uint16          { return zm.zl.Len() }
+func (zm *Zipmap) Bytes() uint32        { return zm.zl.Bytes() }
+
 func (zp *Zipmap) deepcopy() *Zipmap {
-	zl := zp.Ziplist
-	nzl := zl.DeepCopy()
+	nzl := zp.zl.DeepCopy()
 	return &Zipmap{nzl}
 }
 
 func (zp *Zipmap) set(field, val []byte) {
 	var update bool
-	n := zp.Len()
+	n := zp.zl.Len()
 	if n > 0 {
-		idx, _ := zp.find(field)
+		idx, _, _ := zp.find(field)
 		if idx < n { // update
 			update = true
-			zp.ReplaceAtIndex(idx, val)
+			zp.zl.ReplaceAtIndex(idx, val)
 		}
 	}
 
 	if !update {
-		zp.Push(field)
-		zp.Push(val)
+		zp.zl.Push(field)
+		zp.zl.Push(val)
 	}
 }
 
 func (zp *Zipmap) get(field []byte) (val []byte) {
-	n := zp.Len()
+	n := zp.zl.Len()
 	if n == 0 {
 		return
 	}
-	idx, offset := zp.find(field)
+	idx, offset, _ := zp.find(field)
 	if idx >= n {
 		return
 	}
-	val, _ = zp.DecodeEntry(offset)
+	val, _ = zp.zl.DecodeEntry(offset)
 	return val
 }
 
 func (zp *Zipmap) del(field []byte) {
-	if zp.Len() == 0 {
+	if zp.zl.Len() == 0 {
 		return
 	}
-	idx, _ := zp.find(field)
-	zp.RemoveHead(2, idx-1)
+	idx, _, _ := zp.find(field)
+	zp.zl.RemoveHead(2, idx-1)
 	return
 }
 
 func (zp *Zipmap) exists(field []byte) bool {
-	n := zp.Len()
+	n := zp.zl.Len()
 	if n == 0 {
 		return false
 	}
-	idx, _ := zp.find(field)
-	return idx < n
+	_, _, ok := zp.find(field)
+	return ok
 }
 
 func (zp *Zipmap) HLen() uint16 {
-	return zp.Len() / 2
+	return zp.zl.Len() / 2
 }
 
-func (zp *Zipmap) find(field []byte) (uint16, uint32) {
-	iter := ds.NewZiplistIterator(zp.Ziplist)
-	for iter.HasNext() {
-		entry := iter.Next()
-		if slices.Compare(entry, field) == 0 {
-			break
+func (zp *Zipmap) find(field []byte) (uint16, uint32, bool) {
+	for entry := range zp.zl.Iter() {
+		if slices.Compare(entry.Content, field) == 0 {
+			return entry.Index, entry.Offset, true
 		}
 	}
-	return iter.Index(), iter.Offset()
+	return 0, 0, false
 }
 
-type ZipmapIterator struct {
-	zlIter *ds.ZiplistIterator
-}
+type Pair [][]byte
 
-func newZipmapIterator(zm *Zipmap) *ZipmapIterator {
-	return &ZipmapIterator{ds.NewZiplistIterator(zm.Ziplist)}
-}
-
-func (iter *ZipmapIterator) HasNext() bool {
-	return iter.zlIter.HasNext()
-}
-
-func (iter *ZipmapIterator) Next() any {
-	return iter.next()
-}
-
-func (iter *ZipmapIterator) next() KVPair {
-	k, v := iter.zlIter.Next(), iter.zlIter.Next()
-	return KVPair([2][]byte{k, v})
+func (zp *Zipmap) Iter() <-chan Pair {
+	ch := make(chan Pair)
+	go func() {
+		defer close(ch)
+		var pair [][]byte
+		idx := 0
+		for entry := range zp.zl.Iter() {
+			if idx%2 == 0 {
+				pair[0] = entry.Content
+			}
+			if idx%2 == 1 {
+				pair[1] = entry.Content
+				ch <- Pair(pair)
+				pair = [][]byte{}
+			}
+			idx++
+		}
+	}()
+	return ch
 }

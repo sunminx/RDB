@@ -59,16 +59,16 @@ func Exists(robj *obj.Robj, field []byte) bool {
 	return false
 }
 
-func unwrap(robj *obj.Robj) *Zipmap {
-	return robj.Val().(*Zipmap)
-}
-
-type KVPair [2][]byte
-
-func NewIterator(robj *obj.Robj) obj.Iterator {
-	if robj.CheckEncoding(obj.EncodingZipmap) {
+func Iter(robj *obj.Robj) <-chan Pair {
+	switch robj.Encoding() {
+	case obj.EncodingZipmap:
 		zm := robj.Val().(*Zipmap)
-		return newZipmapIterator(zm)
+		return zm.Iter()
+	default:
 	}
 	return nil
+}
+
+func unwrap(robj *obj.Robj) *Zipmap {
+	return robj.Val().(*Zipmap)
 }

@@ -292,6 +292,10 @@ func (zl *Ziplist) ReplaceAtIndex(index uint16, entry []byte) {
 	n := zl.Len()
 	index = Cond(index >= n, n-1, index)
 	offset := zl.offsetHeadSkipN(index)
+	zl.ReplaceAtOffset(offset, entry)
+}
+
+func (zl *Ziplist) ReplaceAtOffset(offset uint32, entry []byte) {
 	prevLen := zl.PrevLen(offset)
 	encoded := zl.EncodeEntry(prevLen, entry)
 	encodedLen := uint32(len(encoded))
@@ -542,7 +546,7 @@ func (zl *Ziplist) RemoveTail(num, skipnum uint16) ([][]byte, uint16, bool) {
 	return removes, skipnum, pass
 }
 
-func (zl *Ziplist) RemoveRange(offset uint32, num uint16) [][]byte {
+func (zl *Ziplist) RemoveFromPos(offset uint32, num uint16) [][]byte {
 	var (
 		left, right = offset, uint32(0)
 		removed     = make([][]byte, 0)
@@ -586,11 +590,9 @@ func (zl *Ziplist) removeAll(num uint16) ([][]byte, bool) {
 
 func (zl *Ziplist) getAllEntries() [][]byte {
 	entries := make([][]byte, 0, zl.Len())
-	iter := NewZiplistIterator(zl)
-	for iter.HasNext() {
-		entry := iter.Next()
-		nentry := make([]byte, len(entry))
-		copy(nentry, entry)
+	for entry := range zl.Iter() {
+		nentry := make([]byte, len(entry.Content))
+		copy(nentry, entry.Content)
 		entries = append(entries, nentry)
 	}
 	return entries
@@ -604,14 +606,14 @@ func (zl *Ziplist) shrink(start, end uint32) {
 	(*zl) = append((*zl)[:start], (*zl)[end:]...)
 }
 
-func (zl *Ziplist) Index(idx uint16) ([]byte, bool) {
+func (zl *Ziplist) EntryAtIdx(idx uint16) ([]byte, bool) {
 	var entry []byte
-	iter := NewZiplistIterator(zl)
-	for idx >= 0 && iter.HasNext() {
-		entry = iter.Next()
+	for entry := range zl.Iter() {
+		if idx == 0 {
+			return entry.Content, true
+		}
 		idx--
 	}
-
 	if idx >= 0 {
 		return nil, false
 	}
@@ -619,44 +621,32 @@ func (zl *Ziplist) Index(idx uint16) ([]byte, bool) {
 }
 
 func (zl *Ziplist) Find(ele []byte) (uint16, uint32, bool) {
-	iter := NewZiplistIterator(zl)
-	for iter.HasNext() {
-		if slices.Compare(ele, iter.Next()) == 0 {
-			return iter.Index(), iter.Offset(), true
+	for entry := range zl.Iter() {
+		if slices.Compare(ele, entry.Content) == 0 {
+			return entry.Index, entry.Offset, true
 		}
 	}
 	return 0, 0, false
 }
 
-type ZiplistIterator struct {
-	zl     *Ziplist
-	offset uint32
-	idx    uint16
+type Entry struct {
+	Index   uint16
+	Offset  uint32
+	Content []byte
+	Options map[string]any
 }
 
-func NewZiplistIterator(zl *Ziplist) *ZiplistIterator {
-	offset := uint32(ZiplistHeaderSize)
-	return &ZiplistIterator{
-		zl:     zl,
-		offset: offset,
-	}
-}
-
-func (iter *ZiplistIterator) HasNext() bool {
-	return !iter.zl.atEnd(iter.offset)
-}
-
-func (iter *ZiplistIterator) Next() []byte {
-	entry, entrysize := iter.zl.DecodeEntry(iter.offset)
-	iter.offset += entrysize
-	iter.idx++
-	return entry
-}
-
-func (iter *ZiplistIterator) Offset() uint32 {
-	return iter.offset
-}
-
-func (iter *ZiplistIterator) Index() uint16 {
-	return iter.idx
+func (zl *Ziplist) Iter() <-chan Entry {
+	ch := make(chan Entry)
+	go func() {
+		defer close(ch)
+		idx, offset := uint16(0), uint32(ZiplistHeaderSize)
+		for !zl.atEnd(offset) {
+			entry, size := zl.DecodeEntry(offset)
+			ch <- Entry{idx, offset, entry, nil}
+			idx++
+			offset += size
+		}
+	}()
+	return ch
 }

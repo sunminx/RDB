@@ -251,7 +251,8 @@ func (rdb *Rdber) loadHashObject() *obj.Robj {
 	}
 	v := rdb.genericLoadStringObject()
 	zl := ds.Ziplist(v.([]byte))
-	zm := &hash.Zipmap{Ziplist: &zl}
+	zm := new(hash.Zipmap)
+	zm.SetZl(&zl)
 	return obj.New(zm, obj.TypeHash, obj.EncodingZipmap)
 }
 
@@ -454,7 +455,7 @@ func (rdb *Rdber) saveHashObject(val *obj.Robj) bool {
 		if !rdb.saveLen(uint64(zm.Bytes())) {
 			return nosave
 		}
-		return rdb.writeRaw([]byte(*zm.Ziplist))
+		return rdb.writeRaw([]byte(*zm.Zl()))
 	}
 	return nosave
 }

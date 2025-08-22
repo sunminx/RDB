@@ -147,8 +147,7 @@ const aofRewriteItemsPerCmd = 64
 
 func (aof *Aofer) rewriteListObject(key string, val *obj.Robj) bool {
 	batch, entries := 0, list.Cnt(val)
-	iter := list.NewIterator(val)
-	for iter.HasNext() {
+	for entry := range list.Iter(val) {
 		if batch == 0 {
 			cmdEntries := int64(Cond(entries < aofRewriteItemsPerCmd,
 				entries, aofRewriteItemsPerCmd))
@@ -159,8 +158,7 @@ func (aof *Aofer) rewriteListObject(key string, val *obj.Robj) bool {
 			}
 		}
 
-		entry := iter.Next()
-		if !aof.writeBulkString(entry.([]byte)) {
+		if !aof.writeBulkString(entry.Content) {
 			return noRewrite
 		}
 		entries--
@@ -174,8 +172,7 @@ func (aof *Aofer) rewriteListObject(key string, val *obj.Robj) bool {
 
 func (aof *Aofer) rewriteHashObject(key string, val *obj.Robj) bool {
 	batch, entries := 0, hash.Len(val)
-	iter := hash.NewIterator(val)
-	for iter.HasNext() {
+	for pair := range hash.Iter(val) {
 		if batch == 0 {
 			cmdEntries := Cond(entries < aofRewriteItemsPerCmd,
 				entries, aofRewriteItemsPerCmd)
@@ -186,11 +183,10 @@ func (aof *Aofer) rewriteHashObject(key string, val *obj.Robj) bool {
 			}
 		}
 
-		kvPair := iter.Next().(hash.KVPair)
-		if !aof.writeBulkString(kvPair[0]) {
+		if !aof.writeBulkString(pair[0]) {
 			return noRewrite
 		}
-		if !aof.writeBulkString(kvPair[1]) {
+		if !aof.writeBulkString(pair[1]) {
 			return noRewrite
 		}
 		entries--

@@ -1,6 +1,7 @@
 package list
 
 import (
+	ds "github.com/sunminx/RDB/internal/datastruct"
 	obj "github.com/sunminx/RDB/internal/object"
 )
 
@@ -93,16 +94,18 @@ func Trim(robj *obj.Robj, start, end uint64) {
 	return
 }
 
-func NewIterator(robj *obj.Robj) obj.Iterator {
-	if robj.CheckEncoding(obj.EncodingQuicklist) {
-		ql := robj.Val().(*Quicklist)
-		return newQuicklistIterator(ql)
-	}
-	return nil
-}
-
 // unwrap unwrap robj to obtain Quicklist. before unwrapping, the encoding type should be checked first.
 // Unsafe
 func unwrap(robj *obj.Robj) *Quicklist {
 	return robj.Val().(*Quicklist)
+}
+
+func Iter(robj *obj.Robj) <-chan ds.Entry {
+	switch robj.Encoding() {
+	case obj.EncodingQuicklist:
+		zl := robj.Val().(*Quicklist)
+		return zl.Iter()
+	default:
+	}
+	return nil
 }

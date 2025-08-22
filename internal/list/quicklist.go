@@ -359,21 +359,18 @@ func (ql *Quicklist) Index(idx uint64) ([]byte, bool) {
 	if idx >= ql.cnt {
 		return nil, false
 	}
-	var entry []byte
-	iter := newQuicklistIterator(ql)
-	for iter.HasNext() {
-		entry = iter.next()
+	for entry := range ql.Iter() {
 		if idx == 0 {
-			break
+			return entry.Content, true
 		}
 		idx--
 	}
-	return entry, true
+	return nil, false
 }
 
-func (ql *Quicklist) Range(start, end uint64) (entrys [][]byte) {
+func (ql *Quicklist) Range(start, end uint64) [][]byte {
 	if start >= end {
-		return
+		return [][]byte{}
 	}
 	if start < 0 {
 		start = 0
@@ -381,19 +378,17 @@ func (ql *Quicklist) Range(start, end uint64) (entrys [][]byte) {
 	if end > ql.cnt {
 		end = ql.cnt
 	}
-
-	var entry []byte
-	iter := newQuicklistIterator(ql)
-	for iter.HasNext() {
-		entry = iter.next()
-		if start < iter.idx {
-			entrys = append(entrys, entry)
+	var entries [][]byte
+	for entry := range ql.Iter() {
+		idx := entryIndex(entry)
+		if start < idx {
+			entries = append(entries, entry.Content)
 		}
-		if end <= iter.idx {
+		if end <= idx {
 			break
 		}
 	}
-	return
+	return entries
 }
 
 func (ql *Quicklist) Trim(start, end uint64) {
@@ -414,46 +409,23 @@ func (ql *Quicklist) Trim(start, end uint64) {
 	return
 }
 
-type quicklistNodeIterator struct {
-	*ds.ZiplistIterator
+func (ql *Quicklist) Iter() <-chan ds.Entry {
+	ch := make(chan ds.Entry)
+	go func() {
+		defer close(ch)
+		idx := uint64(0)
+		node := ql.head
+		for node != nil {
+			for entry := range node.zl.Iter() {
+				setEntryIndex(entry, idx)
+				ch <- entry
+				idx++
+			}
+			node = node.next
+		}
+	}()
+	return ch
 }
 
-func newQuicklistNodeIterator(node *QuicklistNode) *quicklistNodeIterator {
-	return &quicklistNodeIterator{
-		ZiplistIterator: ds.NewZiplistIterator(node.zl),
-	}
-}
-
-type quicklistIterator struct {
-	list     *Quicklist
-	node     *QuicklistNode
-	nodeIter *quicklistNodeIterator
-	idx      uint64
-}
-
-func newQuicklistIterator(list *Quicklist) *quicklistIterator {
-	node := list.head
-	return &quicklistIterator{
-		list:     list,
-		node:     node,
-		nodeIter: newQuicklistNodeIterator(node),
-		idx:      0,
-	}
-}
-
-func (iter *quicklistIterator) HasNext() bool {
-	return iter.idx < iter.list.cnt
-}
-
-func (iter *quicklistIterator) Next() any {
-	return iter.next()
-}
-
-func (iter *quicklistIterator) next() []byte {
-	if !iter.nodeIter.HasNext() {
-		iter.node = iter.node.next
-		iter.nodeIter = newQuicklistNodeIterator(iter.node)
-	}
-	iter.idx++
-	return iter.nodeIter.Next()
-}
+func setEntryIndex(entry ds.Entry, idx uint64) { entry.Options["index"] = idx }
+func entryIndex(entry ds.Entry) uint64         { return entry.Options["index"].(uint64) }
