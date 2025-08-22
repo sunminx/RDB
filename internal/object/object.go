@@ -22,6 +22,7 @@ const (
 	EncodingZipmap
 	EncodingIntset
 	EncodingDict
+	EncodingSkiplist
 )
 
 type Robj struct {

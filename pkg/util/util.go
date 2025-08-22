@@ -1,6 +1,7 @@
 package util
 
 import (
+	"encoding/binary"
 	"math"
 	"sync"
 	"time"
@@ -132,4 +133,15 @@ func TryLockWithTimeout(lock *sync.RWMutex, timeout time.Duration) bool {
 			time.Sleep(10 * time.Millisecond)
 		}
 	}
+}
+
+func EncodeFloat(n float64) []byte {
+	buf := make([]byte, 8)
+	binary.LittleEndian.PutUint64(buf, math.Float64bits(n))
+	return buf
+}
+
+func DecodeFloat(b []byte) float64 {
+	bits := binary.LittleEndian.Uint64(b)
+	return math.Float64frombits(bits)
 }

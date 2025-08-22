@@ -17,7 +17,7 @@ type sdb struct {
 }
 
 func newSdb(id int) *sdb {
-	return &sdb{id: id, ds.Dict: ds.NewDict(), expires: ds.NewDict()}
+	return &sdb{id: id, dict: ds.NewDict(), expires: ds.NewDict()}
 }
 
 var emptyRobj = obj.Robj{}
@@ -26,12 +26,12 @@ func (sdb *sdb) set(expires time.Duration, key string, val *obj.Robj) bool {
 	// Check timestamp if greater than time now. If not, we should delete key instantly.
 	// The value of expire is -1 that means timestamp is not be setted, so we just ignore that test.
 	if expires != -1 && isPassed(expires, time.Now()) {
-		sdb.ds.Dict.Remove(key)
+		sdb.dict.Remove(key)
 		return false
 	}
 	if val != nil {
 		sds.TryObjectEncoding(val)
-		added := sdb.ds.Dict.Put(key, val)
+		added := sdb.dict.Put(key, val)
 		if added {
 			sdb.slen++
 		}
@@ -47,7 +47,7 @@ func (sdb *sdb) get(key string) *obj.Robj {
 		sdb.del(key)
 		return nil
 	}
-	o, ok := sdb.ds.Dict.Get(key)
+	o, ok := sdb.dict.Get(key)
 	if !ok {
 		return nil
 	}
@@ -76,7 +76,7 @@ func isPassed(expires time.Duration, now time.Time) bool {
 }
 
 func (sdb *sdb) del(key string) {
-	ok := sdb.ds.Dict.Remove(key)
+	ok := sdb.dict.Remove(key)
 	if ok {
 		sdb.slen--
 		_ = sdb.expires.Remove(key)
@@ -92,8 +92,8 @@ func (sdb *sdb) setDeleted(key string) {
 }
 
 func (sdb *sdb) empty() int {
-	n := sdb.ds.Dict.Used()
-	sdb.ds.Dict = ds.NewDict()
+	n := sdb.dict.Used()
+	sdb.dict = ds.NewDict()
 	sdb.expires = ds.NewDict()
 	sdb.slen = 0
 	return n
@@ -120,7 +120,7 @@ func (sdb *sdb) iter(ctx context.Context) <-chan *Entry {
 	c := make(chan *Entry)
 	go func() {
 		defer close(c)
-		for key, robj := range sdb.ds.Dict {
+		for key, robj := range sdb.dict {
 			select {
 			case <-ctx.Done():
 				return

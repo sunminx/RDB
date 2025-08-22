@@ -42,7 +42,7 @@ func StrCompare(e1, e2 any) int {
 	return strings.Compare(r1, r2)
 }
 
-// ZSKIPLIST_MAXLEVEL defines the max level of skiplist.
+// ZSKIPLIST_MAXLEVEL defines the Max level of skiplist.
 const ZSKIPLIST_MAXLEVEL = 64
 
 func NewSkiplist(compare Compare) *Skiplist {
@@ -200,6 +200,19 @@ func (s *Skiplist) cmpByScore(node *skiplistNode, aux aux) bool {
 	return next.score < aux.score
 }
 
+func (s *Skiplist) findPosByEle(ele any, ex bool) ([]*skiplistNode, []uint64) {
+	aux := aux{ele: ele, ex: ex}
+	return s.findPos(s.cmpByEle, aux)
+}
+
+func (s *Skiplist) cmpByEle(node *skiplistNode, aux aux) bool {
+	next := node.levels[aux.level].forward
+	if aux.ex {
+		return s.compare(next.ele, aux.ele) < 0
+	}
+	return s.compare(next.ele, aux.ele) <= 0
+}
+
 func (s *Skiplist) findPosByRank(rank uint64, ex bool) ([]*skiplistNode, []uint64) {
 	aux := aux{rank: rank, ex: ex}
 	return s.findPos(s.cmpByRank, aux)
@@ -272,28 +285,28 @@ func (s *Skiplist) GetElementByRank(rank uint64) *skiplistNode {
 	return nil
 }
 
-type scoreRange struct {
-	min, max     float64
-	minex, maxex bool
+type ScoreRange struct {
+	Min, Max     float64
+	Minex, Maxex bool
 }
 
-func scoreGteMin(score float64, rs scoreRange) bool {
-	if rs.minex {
-		return score >= rs.min
+func scoreGteMin(score float64, rs ScoreRange) bool {
+	if rs.Minex {
+		return score >= rs.Min
 	}
-	return score > rs.min
+	return score > rs.Min
 }
 
-func scoreLteMax(score float64, rs scoreRange) bool {
-	if rs.maxex {
-		return score <= rs.max
+func scoreLteMax(score float64, rs ScoreRange) bool {
+	if rs.Maxex {
+		return score <= rs.Max
 	}
-	return score > rs.max
+	return score > rs.Max
 }
 
-func (s *Skiplist) inRange(rs scoreRange) bool {
-	if rs.min > rs.max ||
-		(rs.min == rs.max && (rs.minex || rs.maxex)) {
+func (s *Skiplist) inRange(rs ScoreRange) bool {
+	if rs.Min > rs.Max ||
+		(rs.Min == rs.Max && (rs.Minex || rs.Maxex)) {
 		return false
 	}
 	x := s.header.levels[0].forward
@@ -307,7 +320,7 @@ func (s *Skiplist) inRange(rs scoreRange) bool {
 	return true
 }
 
-func (s *Skiplist) firstInRange(rs scoreRange) *skiplistNode {
+func (s *Skiplist) firstInRange(rs ScoreRange) *skiplistNode {
 	if !s.inRange(rs) {
 		return nil
 	}
@@ -328,7 +341,7 @@ func (s *Skiplist) firstInRange(rs scoreRange) *skiplistNode {
 	return x
 }
 
-func (s *Skiplist) lastInRange(rs scoreRange) *skiplistNode {
+func (s *Skiplist) lastInRange(rs ScoreRange) *skiplistNode {
 	if !s.inRange(rs) {
 		return nil
 	}
@@ -349,34 +362,79 @@ func (s *Skiplist) lastInRange(rs scoreRange) *skiplistNode {
 	return x
 }
 
-// DeleteRangeByScore deletes all node with score between in rs.min and rs.max.
-func (s *Skiplist) DeleteRangeByScore(rs scoreRange) []any {
-	update, _ := s.findPosByScore(rs.min, rs.minex)
-	i := ZSKIPLIST_MAXLEVEL - 1
-	for update[i] == nil {
-		i--
-	}
+func (s *Skiplist) RangeByScore(rs ScoreRange) []any {
+	return s.genericRangeByScore(rs, false)
+}
+
+// DeleteRangeByScore deletes all node with score between in rs.Min and rs.Max.
+func (s *Skiplist) DeleteRangeByScore(rs ScoreRange) []any {
+	return s.genericRangeByScore(rs, true)
+}
+
+func (s *Skiplist) genericRangeByScore(rs ScoreRange, isDeleted bool) []any {
+	update, _ := s.findPosByScore(rs.Min, rs.Minex)
 	eles := make([]any, 0)
 	var x, next *skiplistNode
 	x = update[0].levels[0].forward
 	for x != nil &&
-		((rs.maxex && x.score < rs.max) || (!rs.maxex && x.score <= rs.max)) {
+		((rs.Maxex && x.score < rs.Max) || (!rs.Maxex && x.score <= rs.Max)) {
 		next = x.levels[0].forward
-		s.deleteNode(x.score, x.ele, update)
+		if isDeleted {
+			s.deleteNode(x.score, x.ele, update)
+		}
 		eles = append(eles, x.ele)
 		x = next
 	}
 	return eles
 }
 
-type rankRange struct {
-	min, max     uint64
-	minex, maxex bool
+type EleRange struct {
+	Min, Max     any
+	Minex, Maxex bool
 }
 
-// DeleteRangeByRank deletes all node with rank between in rs.min and rs.max from skiplist.
-func (s *Skiplist) DeleteRangeByRank(rs rankRange) []any {
-	update, rank := s.findPosByRank(rs.min, rs.minex)
+func (s *Skiplist) RangeByEle(rs EleRange) []any {
+	return s.genericRangeByEle(rs, false)
+}
+
+func (s *Skiplist) DeleteRangeByEle(rs EleRange) []any {
+	return s.genericRangeByEle(rs, true)
+}
+
+func (s *Skiplist) genericRangeByEle(rs EleRange, isDeleted bool) []any {
+	update, _ := s.findPosByEle(rs.Min, rs.Minex)
+	eles := make([]any, 0)
+	var x, next *skiplistNode
+	x = update[0].levels[0].forward
+	for x != nil &&
+		((!rs.Maxex && s.compare(x.ele, rs.Max) < 0) ||
+			(rs.Maxex && s.compare(x.ele, rs.Min) <= 0)) {
+		next = x.levels[0].forward
+		if isDeleted {
+			s.deleteNode(x.score, x.ele, update)
+		}
+		eles = append(eles, x.ele)
+		x = next
+	}
+	return eles
+}
+
+type RankRange struct {
+	Min, Max     uint64
+	Minex, Maxex bool
+}
+
+func (s *Skiplist) RangeByRank(rs RankRange) []any {
+	return s.genericRangeByRank(rs, false)
+}
+
+// DeleteRangeByRank deletes all node with rank between in rs.Min and rs.Max from skiplist.
+func (s *Skiplist) DeleteRangeByRank(rs RankRange) []any {
+	return s.genericRangeByRank(rs, true)
+}
+
+func (s *Skiplist) genericRangeByRank(rs RankRange, isDeleted bool) []any {
+	update, rank := s.findPosByRank(rs.Min, rs.Minex)
 	traversed := rank[0] + 1
 	i := 0
 	for update[i] == nil {
@@ -385,7 +443,7 @@ func (s *Skiplist) DeleteRangeByRank(rs rankRange) []any {
 	eles := make([]any, 0)
 	var x, next *skiplistNode
 	x = update[i].levels[0].forward
-	for x != nil && traversed <= rs.max {
+	for x != nil && traversed <= rs.Max {
 		next = x.levels[0].forward
 		s.deleteNode(x.score, x.ele, update)
 		traversed++
@@ -471,36 +529,36 @@ func createSkiplistLevel() *skiplistLevel {
 	return level
 }
 
-// parseRange parse range arguments of zset family commands to populate the scoreRange.
-func parseRange(min, max *obj.Robj) (*scoreRange, error) {
-	rs := new(scoreRange)
-	if min.CheckEncoding(obj.EncodingInt) {
-		rs.min = min.Val().(float64)
+// parseRange parse range arguments of zset family commands to populate the ScoreRange.
+func parseRange(Min, Max *obj.Robj) (*ScoreRange, error) {
+	rs := new(ScoreRange)
+	if Min.CheckEncoding(obj.EncodingInt) {
+		rs.Min = Min.Val().(float64)
 	} else {
-		v := min.Val().([]byte)
+		v := Min.Val().([]byte)
 		if v[0] == '(' {
 			v = v[1:]
-			rs.minex = true
+			rs.Minex = true
 		}
 		n, err := strconv.ParseFloat(string(v), 64)
 		if err != nil {
 			return nil, err
 		}
-		rs.min = n
+		rs.Min = n
 	}
-	if max.CheckEncoding(obj.EncodingInt) {
-		rs.max = max.Val().(float64)
+	if Max.CheckEncoding(obj.EncodingInt) {
+		rs.Max = Max.Val().(float64)
 	} else {
-		v := max.Val().([]byte)
+		v := Max.Val().([]byte)
 		if v[0] == '(' {
 			v = v[1:]
-			rs.maxex = true
+			rs.Maxex = true
 		}
 		n, err := strconv.ParseFloat(string(v), 64)
 		if err != nil {
 			return nil, err
 		}
-		rs.max = n
+		rs.Max = n
 	}
 	return rs, nil
 }

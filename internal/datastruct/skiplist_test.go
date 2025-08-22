@@ -111,18 +111,18 @@ func TestDeleteByScore(t *testing.T) {
 	}
 	t.Logf("zsl length: %d\n", zsl.length)
 	lo, hi := 10, 1000
-	rs := scoreRange{min: scores[lo], max: scores[hi], minex: false, maxex: false}
+	rs := ScoreRange{Min: scores[lo], Max: scores[hi], Minex: false, Maxex: false}
 	_ = zsl.DeleteRangeByScore(rs)
 	t.Logf("zsl length: %d\n", zsl.length)
 	for lo > 0 {
-		if scores[lo-1] == rs.min {
+		if scores[lo-1] == rs.Min {
 			lo--
 		} else {
 			break
 		}
 	}
 	for hi < n-1 {
-		if scores[hi+1] == rs.max {
+		if scores[hi+1] == rs.Max {
 			hi++
 		} else {
 			break
@@ -135,8 +135,8 @@ func TestDeleteByScore(t *testing.T) {
 	}
 	for i := lo; i <= hi; i++ {
 		if zsl.GetRank(scores[i], eles[i]) != 0 {
-			t.Logf("failed: idx: %d score %f ele %v min: %f max: %f",
-				i, scores[i], eles[i], rs.min, rs.max)
+			t.Logf("failed: idx: %d score %f ele %v Min: %f Max: %f",
+				i, scores[i], eles[i], rs.Min, rs.Max)
 			t.Error("failed to delete by score")
 		}
 	}
@@ -163,20 +163,20 @@ func TestDeleteByRank(t *testing.T) {
 	}
 	t.Logf("zsl length: %d\n", zsl.length)
 	lo, hi := 10, 100000
-	rs := rankRange{min: uint64(lo), max: uint64(hi), minex: false, maxex: false}
+	rs := RankRange{Min: uint64(lo), Max: uint64(hi), Minex: false, Maxex: false}
 	_ = zsl.DeleteRangeByRank(rs)
 	t.Logf("zsl length: %d\n", zsl.length)
 	for i := 0; i < lo-1; i++ {
 		if zsl.GetRank(scores[i], eles[i]) == 0 {
-			t.Logf("failed: idx: %d score %f ele %v min: %d max: %d, rank: %d\n",
-				i, scores[i], eles[i], rs.min, rs.max, zsl.GetRank(scores[i], eles[i]))
+			t.Logf("failed: idx: %d score %f ele %v Min: %d Max: %d, rank: %d\n",
+				i, scores[i], eles[i], rs.Min, rs.Max, zsl.GetRank(scores[i], eles[i]))
 			t.Error("failed to delete by score")
 		}
 	}
 	for i := lo - 1; i < hi; i++ {
 		if zsl.GetRank(scores[i], eles[i]) != 0 {
-			t.Logf("failed: idx: %d score %f ele %v min: %d max: %d",
-				i, scores[i], eles[i], rs.min, rs.max)
+			t.Logf("failed: idx: %d score %f ele %v Min: %d Max: %d",
+				i, scores[i], eles[i], rs.Min, rs.Max)
 			t.Error("failed to delete by score")
 		}
 	}
