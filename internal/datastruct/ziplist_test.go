@@ -2,6 +2,7 @@ package datastruct
 
 import (
 	"slices"
+	"strconv"
 	"strings"
 	"testing"
 )
@@ -12,7 +13,7 @@ func TestNewZiplist(t *testing.T) {
 	zl.Push([]byte("100000000"))
 	zl.Push([]byte(strings.Repeat("hello", 237) + "hel"))
 	zl.Push([]byte("1234567"))
-	entry, ok := zl.Index(2)
+	entry, ok := zl.EntryAtIndex(2)
 	t.Log(ok)
 	t.Log(string(entry))
 }
@@ -77,9 +78,13 @@ func TestPush(t *testing.T) {
 	zl.PushLeft([]byte("jim"))
 	zl.PushLeft([]byte(strings.Repeat("xxx", 3000) + "jij"))
 	zl.PushLeft([]byte("1234567"))
-	entry, ok := zl.Index(1)
-	t.Log(ok)
-	t.Log(string(entry))
+	entry, ok := zl.EntryAtIndex(1)
+	if !ok {
+		t.Error("push failed")
+	}
+	if slices.Compare([]byte(strings.Repeat("xxx", 3000)+"jij"), entry) != 0 {
+		t.Error("push failed")
+	}
 }
 
 func TestZiplistPop(t *testing.T) {
@@ -90,7 +95,7 @@ func TestZiplistPop(t *testing.T) {
 	zl.PopLeft()
 	t.Log(zl.Len())
 	t.Log(zl.Bytes())
-	entry, ok := zl.Index(1)
+	entry, ok := zl.EntryAtIndex(1)
 	if ok {
 		t.Log(string(entry))
 		//t.Log(entry)
@@ -100,13 +105,13 @@ func TestZiplistPop(t *testing.T) {
 func TestZiplistWithInt(t *testing.T) {
 	zl := NewZiplist()
 	zl.Push([]byte("166"))
-	entry, ok := zl.Index(0)
+	entry, ok := zl.EntryAtIndex(0)
 	if ok {
 		t.Log(string(entry))
 	}
 }
 
-func TestZiplistRemove(t *testing.T) {
+func TestZiplistRemoveTail(t *testing.T) {
 	zl := NewZiplist()
 	zl.Push([]byte("1"))
 	zl.Push([]byte("2"))
@@ -114,16 +119,37 @@ func TestZiplistRemove(t *testing.T) {
 	zl.Push([]byte("4"))
 	zl.Push([]byte("5"))
 	zl.RemoveTail(1, 2)
-	entry, _ := zl.Index(0)
+	entry, _ := zl.EntryAtIndex(0)
 	t.Log(string(entry))
 }
 
 func TestZiplistReplaceAtIndex(t *testing.T) {
 	zl := NewZiplist()
 	zl.Push([]byte("111111"))
-	entry, _ := zl.Index(0)
+	entry, _ := zl.EntryAtIndex(0)
 	t.Log(string(entry))
 	zl.ReplaceAtIndex(0, []byte("2"))
-	entry, _ = zl.Index(0)
+	entry, _ = zl.EntryAtIndex(0)
 	t.Log(string(entry))
+}
+
+func TestRemoveFromPos(t *testing.T) {
+	zl := createZiplist()
+	index, offset, _ := zl.Find([]byte(strings.Repeat("499", 10)))
+	removed := zl.RemoveFromPos(offset, 102)
+	for _, e := range removed {
+		expected := strings.Repeat(strconv.Itoa(int(index)), 10)
+		if string(e) != expected {
+			t.Error("removeFromPos failed")
+		}
+		index++
+	}
+}
+
+func createZiplist() *Ziplist {
+	zl := NewZiplist()
+	for i := 0; i < 1024; i++ {
+		zl.Push([]byte(strings.Repeat(strconv.Itoa(i), 10)))
+	}
+	return zl
 }

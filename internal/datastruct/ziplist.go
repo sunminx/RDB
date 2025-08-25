@@ -2,6 +2,7 @@ package datastruct
 
 import (
 	"encoding/binary"
+	"fmt"
 	"math"
 	"slices"
 	"strconv"
@@ -77,33 +78,33 @@ const (
 	zipInt8b  = 0xfe
 )
 
-// decodeEntry decode a entry locate by offset
+// DecodeEntry decodes an entry located with offset.
 func (zl *Ziplist) DecodeEntry(offset uint32) (entry []byte, size uint32) {
-	prevlensize := zl.prevLenSize(offset)
-	_type, lensize, ln := zl.decodeEntryEncoding(offset + prevlensize)
-	conoffset := offset + prevlensize + lensize
-	if _type == strType {
-		entry = []byte(*zl)[conoffset : conoffset+ln]
+	prevLenSize := zl.prevLenSize(offset)
+	typ, lenSize, ln := zl.decodeEntryEncoding(offset + prevLenSize)
+	conOffset := offset + prevLenSize + lenSize
+	if typ == strType {
+		entry = []byte(*zl)[conOffset : conOffset+ln]
 	} else {
 		if ln == 0 {
-			encoding := []byte(*zl)[offset+prevlensize : offset+prevlensize+1]
+			encoding := []byte(*zl)[offset+prevLenSize : offset+prevLenSize+1]
 			num := (encoding[0] & 0x0F) - 1
 			entry = []byte(strconv.FormatInt(int64(num), 10))
 		} else if ln == 1 {
-			num := []byte(*zl)[conoffset : conoffset+ln]
+			num := []byte(*zl)[conOffset : conOffset+ln]
 			entry = []byte(strconv.FormatInt(int64(num[0]), 10))
 		} else if ln == 2 {
-			num := binary.LittleEndian.Uint16([]byte(*zl)[conoffset : conoffset+ln])
+			num := binary.LittleEndian.Uint16([]byte(*zl)[conOffset : conOffset+ln])
 			entry = []byte(strconv.FormatInt(int64(num), 10))
 		} else if ln == 4 {
-			num := binary.LittleEndian.Uint32([]byte(*zl)[conoffset : conoffset+ln])
+			num := binary.LittleEndian.Uint32([]byte(*zl)[conOffset : conOffset+ln])
 			entry = []byte(strconv.FormatInt(int64(num), 10))
 		} else if ln == 8 {
-			num := binary.LittleEndian.Uint64([]byte(*zl)[conoffset : conoffset+ln])
+			num := binary.LittleEndian.Uint64([]byte(*zl)[conOffset : conOffset+ln])
 			entry = []byte(strconv.FormatInt(int64(num), 10))
 		}
 	}
-	size = prevlensize + lensize + ln
+	size = prevLenSize + lenSize + ln
 	return
 }
 
@@ -114,20 +115,20 @@ const (
 
 func (zl *Ziplist) decodeEntryEncoding(start uint32) (int8, uint32, uint32) {
 	// typeByte: first two bit of byte
-	_type := []byte(*zl)[start] & zipStrMask
+	typ := []byte(*zl)[start] & zipStrMask
 	bytes := zl.Bytes()
 	end := Cond(start+5 > bytes, bytes, start+5)
 	encoding := []byte(*zl)[start:end]
-	if _type < zipStrMask {
-		lenSize, _len := zipStrSize(_type, encoding)
-		return strType, lenSize, _len
+	if typ < zipStrMask {
+		lenSize, ln := zipStrSize(typ, encoding)
+		return strType, lenSize, ln
 	}
-	lenSize, _len := zipIntSize([]byte(*zl)[start], encoding)
-	return intType, lenSize, _len
+	lenSize, ln := zipIntSize([]byte(*zl)[start], encoding)
+	return intType, lenSize, ln
 }
 
-func zipStrSize(_type byte, encoding []byte) (uint32, uint32) {
-	switch _type {
+func zipStrSize(typ byte, encoding []byte) (uint32, uint32) {
+	switch typ {
 	case zipStr06b:
 		// 0x3f 00111111
 		// |00pppppp| - 1 byte
@@ -147,8 +148,8 @@ func zipStrSize(_type byte, encoding []byte) (uint32, uint32) {
 	}
 }
 
-func zipIntSize(_type byte, _ []byte) (uint32, uint32) {
-	switch _type {
+func zipIntSize(typ byte, _ []byte) (uint32, uint32) {
+	switch typ {
 	case zipInt8b:
 		return 1, 1
 	case zipInt16b:
@@ -158,18 +159,19 @@ func zipIntSize(_type byte, _ []byte) (uint32, uint32) {
 	case zipInt64b:
 		return 1, 8
 	default:
-		if _type&0xf0 == 0xf0 {
+		if typ&0xf0 == 0xf0 {
 			return 1, 0
 		}
 		return 0, 0
 	}
 }
 
+// EncodeEntry encodes a content that will be insert into the ziplist.
 func (zl *Ziplist) EncodeEntry(prevlen uint32, content []byte) []byte {
 	entry := encodePrevLen(prevlen)
-	_type, _, encoded := zl.encodeEntryEncoding(content)
+	typ, _, encoded := zl.encodeEntryEncoding(content)
 	entry = append(entry, encoded...)
-	if _type == strType {
+	if typ == strType {
 		entry = append(entry, content...)
 	}
 	return entry
@@ -187,16 +189,14 @@ func (zl *Ziplist) encodeEntryEncoding(entry []byte) (int8, uint32, []byte) {
 	return strType, lensize, encoded
 }
 
-// ZiplistEntryEncodeLen estimate the number of bytes occupied by the entry.
+// ZiplistEntryEncodeLen estimates the number of bytes occupied by the entry.
 func ZiplistEntryEncodeLen(ln uint32) uint32 {
-	var overhead uint32
-
+	overhead := uint32(0)
 	if ln < 254 {
 		overhead = 1
 	} else {
 		overhead = 5
 	}
-
 	if ln < 64 {
 		overhead += 1
 	} else if ln < 16384 {
@@ -252,22 +252,19 @@ func (zl *Ziplist) tailEntry() []byte {
 	return []byte(*zl)[n:]
 }
 
-func (zl *Ziplist) entryLen(offset uint32) uint32 {
-	prevlensize := prevLenSize(offset)
-	_, lensize, ln := zl.decodeEntryEncoding(offset + prevlensize)
-	return prevlensize + lensize + ln
+func (zl *Ziplist) entrySize(offset uint32) uint32 {
+	prevLenSize := zl.prevLenSize(offset)
+	_, lenSize, ln := zl.decodeEntryEncoding(offset + prevLenSize)
+	return prevLenSize + lenSize + ln
 }
 
 func (zl *Ziplist) prevLenSize(offset uint32) uint32 {
-	return prevLenSize(zl.PrevLen(offset))
-}
-
-func prevLenSize(prevlen uint32) uint32 {
-	prevlensize := uint32(1)
-	if prevlen >= 254 {
-		prevlensize += 4
+	prevLenSize := uint32(1)
+	prevLen := zl.PrevLen(offset)
+	if prevLen >= 254 {
+		prevLenSize += 4
 	}
-	return prevlensize
+	return prevLenSize
 }
 
 func encodePrevLen(size uint32) []byte {
@@ -280,6 +277,7 @@ func encodePrevLen(size uint32) []byte {
 	return buf
 }
 
+// PrevLen returns length of the previous entry.
 func (zl *Ziplist) PrevLen(offset uint32) uint32 {
 	if []byte(*zl)[offset] != 0xFE {
 		return uint32([]byte(*zl)[offset])
@@ -287,6 +285,7 @@ func (zl *Ziplist) PrevLen(offset uint32) uint32 {
 	return binary.LittleEndian.Uint32([]byte(*zl)[offset+1 : offset+5])
 }
 
+// ReplaceAtIndex replaces the entry's content locate with index.
 func (zl *Ziplist) ReplaceAtIndex(index uint16, entry []byte) {
 	index = Cond(index < 0, 0, index)
 	n := zl.Len()
@@ -295,11 +294,12 @@ func (zl *Ziplist) ReplaceAtIndex(index uint16, entry []byte) {
 	zl.ReplaceAtOffset(offset, entry)
 }
 
+// ReplaceAtIndex replaces the entry's content locate with offset.
 func (zl *Ziplist) ReplaceAtOffset(offset uint32, entry []byte) {
 	prevLen := zl.PrevLen(offset)
 	encoded := zl.EncodeEntry(prevLen, entry)
 	encodedLen := uint32(len(encoded))
-	oldEncodedLen := zl.entryLen(offset)
+	oldEncodedLen := zl.entrySize(offset)
 	if encodedLen > oldEncodedLen {
 		zl.expand(offset, encodedLen-oldEncodedLen)
 	} else if encodedLen < oldEncodedLen {
@@ -308,28 +308,31 @@ func (zl *Ziplist) ReplaceAtOffset(offset uint32, entry []byte) {
 	zl.write(offset, encoded)
 }
 
+// Push appends an entry to ziplist.
 func (zl *Ziplist) Push(entry []byte) {
 	endOffset := zl.Bytes() - 1
 	zl.insert(endOffset, entry)
 }
 
+// PushLeft inserts an entry at the header of ziplist.
 func (zl *Ziplist) PushLeft(entry []byte) {
 	offset := ZiplistHeaderSize
 	zl.insert(offset, entry)
 }
 
-func (zl *Ziplist) InsetAt(offset uint32, content []byte) {
+// InsertAt inserts an entry at a specific position which locate with offset.
+func (zl *Ziplist) InsertAt(offset uint32, content []byte) {
 	zl.insert(offset, content)
 }
 
 func (zl *Ziplist) insert(offset uint32, content []byte) {
 	var prevLen, nextDiff uint32
 	bytes := zl.Bytes()
-	_len := zl.Len()
+	ln := zl.Len()
 
 	firstByte := ([]byte)(*zl)[offset]
-	if firstByte == ZiplistEnd && _len > 0 { // end
-		prevLen = zl.entryLen(zl.TailOffset())
+	if firstByte == ZiplistEnd && ln > 0 { // end
+		prevLen = zl.entrySize(zl.TailOffset())
 		zl.SetTailOffset(offset)
 	}
 	// calculate the number of bytes required to insert the entry
@@ -342,7 +345,7 @@ func (zl *Ziplist) insert(offset uint32, content []byte) {
 
 	entry := zl.EncodeEntry(prevLen, content)
 	entrySize := uint32(len(entry))
-	if firstByte != ZiplistEnd && _len > 0 { // header
+	if firstByte != ZiplistEnd && ln > 0 { // header
 		if entrySize >= 254 {
 			nextDiff = 4
 		}
@@ -354,17 +357,18 @@ func (zl *Ziplist) insert(offset uint32, content []byte) {
 	// reset prevLen for next entry
 	if nextDiff > 0 {
 		zl.write(offset+entrySize, encodePrevLen(entrySize))
-	} else if firstByte != ZiplistEnd && _len == 0 {
+	} else if firstByte != ZiplistEnd && ln == 0 {
 		zl.write(offset+entrySize, []byte{byte(entrySize)})
 	}
 	bytes += entrySize + nextDiff
 	zl.write(bytes-1, []byte{ZiplistEnd})
-	zl.SetLen(_len + 1)
+	zl.SetLen(ln + 1)
 	zl.SetBytes(bytes)
 	return
 }
 
-func (zl *Ziplist) InsertEncoded(offset uint32, encoded []byte, _len uint16, headPrevLen, tailLen uint32) {
+func (zl *Ziplist) InsertEncoded(offset uint32,
+	encoded []byte, ln uint16, headPrevLen, tailLen uint32) {
 	encodedLen := uint32(len(encoded))
 	prevLen := zl.PrevLen(offset)
 	if !zl.atEnd(offset) {
@@ -388,21 +392,19 @@ func (zl *Ziplist) InsertEncoded(offset uint32, encoded []byte, _len uint16, hea
 	}
 
 	zl.addBytes(encodedLen)
-	zl.addLen(_len)
+	zl.addLen(ln)
 	zl.addTailOffset(encodedLen)
 	zl.write(zl.Bytes()-1, []byte{ZiplistEnd})
 }
 
 func (zl *Ziplist) ExtractEncoded() ([]byte, uint16, uint32, uint32) {
-	head := zl.HeadOffset()
-	tail := zl.TailOffset()
+	head, tail := zl.HeadOffset(), zl.TailOffset()
 	end := zl.Bytes()
-
 	encoded := []byte(*zl)[head:end]
-	_len := zl.Len()
+	ln := zl.Len()
 	headPrevLen := zl.PrevLen(head)
-	tailLen := zl.entryLen(tail)
-	return encoded, _len, headPrevLen, tailLen
+	tailLen := zl.entrySize(tail)
+	return encoded, ln, headPrevLen, tailLen
 }
 
 func (zl *Ziplist) expand(offset, size uint32) {
@@ -421,14 +423,7 @@ const (
 	ZiplistTail = 1
 )
 
-func (zl *Ziplist) PopLeft() []byte {
-	removes, _, _ := zl.RemoveHead(1, 0)
-	if removes != nil && len(removes) > 0 {
-		return removes[0]
-	}
-	return nil
-}
-
+// Pop pops an entry from ziplist.
 func (zl *Ziplist) Pop() []byte {
 	removes, _, _ := zl.RemoveTail(1, 0)
 	if removes != nil && len(removes) > 0 {
@@ -437,6 +432,16 @@ func (zl *Ziplist) Pop() []byte {
 	return nil
 }
 
+// PopLeft removes an entry at header of ziplist.
+func (zl *Ziplist) PopLeft() []byte {
+	removes, _, _ := zl.RemoveHead(1, 0)
+	if removes != nil && len(removes) > 0 {
+		return removes[0]
+	}
+	return nil
+}
+
+// RemoveHead removes entries from the header of ziplist, and skipnum entries can be skipped.
 func (zl *Ziplist) RemoveHead(num, skipnum uint16) ([][]byte, uint16, bool) {
 	// If there are no entry that need to be skipped, trying to delete zl directly.
 	if skipnum == 0 {
@@ -450,7 +455,6 @@ func (zl *Ziplist) RemoveHead(num, skipnum uint16) ([][]byte, uint16, bool) {
 	if skipnum >= n {
 		return nil, n, true
 	}
-
 	var (
 		removedNum = uint16(0)
 		pass       = false
@@ -471,7 +475,6 @@ func (zl *Ziplist) RemoveHead(num, skipnum uint16) ([][]byte, uint16, bool) {
 			break
 		}
 	}
-
 	// the prevlen of the subsequent elements is updated only
 	// when there are subsequent entry.
 	if !pass {
@@ -484,7 +487,6 @@ func (zl *Ziplist) RemoveHead(num, skipnum uint16) ([][]byte, uint16, bool) {
 		}
 		zl.write(offset, encodePrevLen(pprevlen))
 	}
-
 	zl.shrink(start, offset)
 	zl.addBytes(-(offset - start))
 	zl.addTailOffset(-(offset - start))
@@ -495,11 +497,12 @@ func (zl *Ziplist) RemoveHead(num, skipnum uint16) ([][]byte, uint16, bool) {
 func (zl *Ziplist) offsetHeadSkipN(n uint16) uint32 {
 	offset := zl.HeadOffset()
 	for ; n > 0; n-- {
-		offset += zl.entryLen(offset)
+		offset += zl.entrySize(offset)
 	}
 	return offset
 }
 
+// RemoveTail removes entries from the tail of ziplist, and skipnum entries can be skipped.
 func (zl *Ziplist) RemoveTail(num, skipnum uint16) ([][]byte, uint16, bool) {
 	// If there are no entry that need to be skipped, trying to delete zl directly.
 	if skipnum == 0 {
@@ -538,7 +541,7 @@ func (zl *Ziplist) RemoveTail(num, skipnum uint16) ([][]byte, uint16, bool) {
 	}
 
 	pprevlen := zl.PrevLen(start)
-	start += zl.entryLen(start)
+	start += zl.entrySize(start)
 	zl.shrink(offset, start)
 	zl.addBytes(-(start - offset))
 	zl.addTailOffset(-pprevlen)
@@ -556,8 +559,9 @@ func (zl *Ziplist) RemoveFromPos(offset uint32, num uint16) [][]byte {
 		if zl.atEnd(offset) {
 			break
 		}
+		// The size is length of entry, not only the length of entry's content.
 		entry, size := zl.DecodeEntry(offset)
-		b := make([]byte, size)
+		b := make([]byte, len(entry))
 		copy(b, entry)
 		removed = append(removed, b)
 		offset += size
@@ -602,11 +606,13 @@ func (zl *Ziplist) atEnd(offset uint32) bool {
 	return []byte(*zl)[offset] == 255
 }
 
+// shrink removes entries which offset is between start and end
 func (zl *Ziplist) shrink(start, end uint32) {
 	(*zl) = append((*zl)[:start], (*zl)[end:]...)
 }
 
-func (zl *Ziplist) EntryAtIdx(idx uint16) ([]byte, bool) {
+// EntryAtIndex returns the entry at idx.
+func (zl *Ziplist) EntryAtIndex(idx uint16) ([]byte, bool) {
 	var entry []byte
 	for entry := range zl.Iter() {
 		if idx == 0 {
@@ -620,6 +626,17 @@ func (zl *Ziplist) EntryAtIdx(idx uint16) ([]byte, bool) {
 	return entry, true
 }
 
+func (zl *Ziplist) visualize() {
+	fmt.Printf("Ziplist length: %d\n", zl.Len())
+	fmt.Println("=============================")
+	idx := 0
+	for entry := range zl.Iter() {
+		fmt.Printf("[%d] %s\n", idx, string(entry.Content))
+		idx++
+	}
+}
+
+// Find determines whether the entry exists. the index and the offset will be returned if exists.
 func (zl *Ziplist) Find(ele []byte) (uint16, uint32, bool) {
 	for entry := range zl.Iter() {
 		if slices.Compare(ele, entry.Content) == 0 {
