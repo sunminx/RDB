@@ -32,7 +32,7 @@ func (impl *ziplistImpl) incr(incr float64, ele []byte) uint64 {
 	index, _, ok := impl.Find(ele)
 	if ok {
 		// Ele and score always come in pairs, so the score must exists in here.
-		entry, _ := impl.EntryAtIdx(index + 1)
+		entry, _ := impl.EntryAtIndex(index + 1)
 		oldscore := util.DecodeFloat(entry)
 		sb := util.EncodeFloat(oldscore + incr)
 		impl.ReplaceAtIndex(index+1, sb)
@@ -85,9 +85,11 @@ func (impl *ziplistImpl) removeRangeByScore(min, max float64, minex, maxex bool)
 
 func (impl *ziplistImpl) rangeByRank(min, max uint64, minex, maxex bool, direct int) [][]byte {
 	eles := make([][]byte, 0)
+	min, max = 2*min, 2*max
 	idx := uint64(0)
 	for entry := range impl.Iter() {
 		if idx%2 != 0 {
+			idx++
 			continue
 		}
 		if (maxex && idx > max) || (!maxex && idx >= max) {
@@ -106,16 +108,18 @@ func (impl *ziplistImpl) rangeByEle(min, max []byte, minex, maxex bool, direct i
 	idx := 0
 	for entry := range impl.Iter() {
 		if idx%2 != 0 {
+			idx++
 			continue
 		}
 		if (maxex && slices.Compare(entry.Content, max) > 0) ||
-			(!maxex && slices.Compare(entry.Content, min) >= 0) {
+			(!maxex && slices.Compare(entry.Content, max) >= 0) {
 			break
 		}
 		if (minex && slices.Compare(entry.Content, min) >= 0) ||
 			(!minex && slices.Compare(entry.Content, min) > 0) {
 			eles = append(eles, entry.Content)
 		}
+		idx++
 	}
 	return eles
 }
@@ -128,6 +132,7 @@ func (impl *ziplistImpl) rangeByScore(min, max float64, minex, maxex bool, direc
 	)
 	for entry := range impl.Iter() {
 		if idx%2 == 0 {
+			idx++
 			ele = entry.Content
 			continue
 		}
@@ -138,6 +143,7 @@ func (impl *ziplistImpl) rangeByScore(min, max float64, minex, maxex bool, direc
 		if (minex && score >= min) || (!minex && score > min) {
 			eles = append(eles, ele)
 		}
+		idx++
 	}
 	return eles
 }
