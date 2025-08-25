@@ -1,6 +1,8 @@
 package zset
 
 import (
+	"slices"
+
 	ds "github.com/sunminx/RDB/internal/datastruct"
 	"github.com/sunminx/RDB/pkg/util"
 )
@@ -27,10 +29,10 @@ func (impl *ziplistImpl) add(score float64, ele []byte) uint64 {
 }
 
 func (impl *ziplistImpl) incr(incr float64, ele []byte) uint64 {
-	index, ok := impl.Find(ele)
+	index, _, ok := impl.Find(ele)
 	if ok {
 		// Ele and score always come in pairs, so the score must exists in here.
-		entry, _ := impl.Index(index + 1)
+		entry, _ := impl.EntryAtIdx(index + 1)
 		oldscore := util.DecodeFloat(entry)
 		sb := util.EncodeFloat(oldscore + incr)
 		impl.ReplaceAtIndex(index+1, sb)
@@ -44,12 +46,12 @@ func (impl *ziplistImpl) remove(ele []byte) uint64 {
 	if !ok {
 		return 0
 	}
-	_ = impl.RemoveRange(offset, 1)
+	_ = impl.RemoveFromPos(offset, 1)
 	return 1
 }
 
 func (impl *ziplistImpl) removeRangeByRank(min, max uint64, minex, maxex bool) uint64 {
-	_, n, _ := impl.RemoveHead(max-min, min)
+	_, n, _ := impl.RemoveHead(uint16(max-min), uint16(min))
 	return uint64(n)
 }
 
@@ -62,44 +64,123 @@ func (impl *ziplistImpl) removeRangeByEle(min, max []byte, minex, maxex bool) ui
 	if !ok {
 		return 0
 	}
-	removed := impl.RangeRemove(offset, 2*(maxIdx-minIdx))
+	removed := impl.RemoveFromPos(offset, 2*(maxIdx-minIdx))
 	return uint64(len(removed))
 }
 
 func (impl *ziplistImpl) removeRangeByScore(min, max float64, minex, maxex bool) uint64 {
-	return 0
+	minIdx, offset, ok := impl.Find(util.EncodeFloat(min))
+	if !ok {
+		return 0
+	}
+	maxIdx, _, ok := impl.Find(util.EncodeFloat(max))
+	if !ok {
+		return 0
+	}
+	// Get the offset of min element.
+	offset = impl.PrevLen(offset)
+	removed := impl.RemoveFromPos(offset, 2*(maxIdx-minIdx))
+	return uint64(len(removed))
 }
 
 func (impl *ziplistImpl) rangeByRank(min, max uint64, minex, maxex bool, direct int) [][]byte {
-	return nil
+	eles := make([][]byte, 0)
+	idx := uint64(0)
+	for entry := range impl.Iter() {
+		if idx%2 != 0 {
+			continue
+		}
+		if (maxex && idx > max) || (!maxex && idx >= max) {
+			break
+		}
+		if (minex && idx >= min) || (!minex && idx > min) {
+			eles = append(eles, entry.Content)
+		}
+		idx++
+	}
+	return eles
 }
 
 func (impl *ziplistImpl) rangeByEle(min, max []byte, minex, maxex bool, direct int) [][]byte {
-	return nil
+	eles := make([][]byte, 0)
+	idx := 0
+	for entry := range impl.Iter() {
+		if idx%2 != 0 {
+			continue
+		}
+		if (maxex && slices.Compare(entry.Content, max) > 0) ||
+			(!maxex && slices.Compare(entry.Content, min) >= 0) {
+			break
+		}
+		if (minex && slices.Compare(entry.Content, min) >= 0) ||
+			(!minex && slices.Compare(entry.Content, min) > 0) {
+			eles = append(eles, entry.Content)
+		}
+	}
+	return eles
 }
 
 func (impl *ziplistImpl) rangeByScore(min, max float64, minex, maxex bool, direct int) [][]byte {
-	return nil
+	var (
+		eles = make([][]byte, 0)
+		idx  = 0
+		ele  []byte
+	)
+	for entry := range impl.Iter() {
+		if idx%2 == 0 {
+			ele = entry.Content
+			continue
+		}
+		score := util.DecodeFloat(entry.Content)
+		if (maxex && score > max) || (!maxex && score >= max) {
+			break
+		}
+		if (minex && score >= min) || (!minex && score > min) {
+			eles = append(eles, ele)
+		}
+	}
+	return eles
 }
 
 func (impl *ziplistImpl) countByRank(min, max uint64, minex, maxex bool, direct int) uint64 {
-	return 0
+	eles := impl.rangeByRank(min, max, minex, maxex, direct)
+	return uint64(len(eles))
 }
 
 func (impl *ziplistImpl) countByEle(min, max []byte, minex, maxex bool, direct int) uint64 {
-	return 0
+	eles := impl.rangeByEle(min, max, minex, maxex, direct)
+	return uint64(len(eles))
 }
 
 func (impl *ziplistImpl) countByScore(min, max float64, minex, maxex bool, direct int) uint64 {
-	return 0
+	eles := impl.rangeByScore(min, max, minex, maxex, direct)
+	return uint64(len(eles))
 }
 
-func (impl *ziplistImpl) rank([]byte, int) uint64 {
-	return 0
+func (impl *ziplistImpl) rank(ele []byte, direct int) uint64 {
+	idx := uint64(0)
+	for entry := range impl.Iter() {
+		if slices.Compare(ele, entry.Content) == 0 {
+			break
+		}
+		idx++
+	}
+	return idx
 }
 
-func (impl *ziplistImpl) score([]byte) float64 {
-	return 0
+func (impl *ziplistImpl) score(ele []byte) float64 {
+	score := float64(0)
+	finded := false
+	for entry := range impl.Iter() {
+		if finded {
+			score = util.DecodeFloat(entry.Content)
+			break
+		}
+		if slices.Compare(ele, entry.Content) == 0 {
+			finded = true
+		}
+	}
+	return score
 }
 
 func (impl *ziplistImpl) typ() implType {
