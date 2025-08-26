@@ -51,36 +51,69 @@ func (impl *ziplistImpl) remove(ele []byte) uint64 {
 }
 
 func (impl *ziplistImpl) removeRangeByRank(min, max uint64, minex, maxex bool) uint64 {
-	_, n, _ := impl.RemoveHead(uint16(max-min), uint16(min))
-	return uint64(n)
+	num, skipedNum := max-min, min
+	if !minex {
+		num--
+		skipedNum++
+	}
+	if maxex {
+		num++
+	}
+	removed, _, _ := impl.RemoveHead(uint16(2*num), uint16(2*skipedNum))
+	return uint64(len(removed) / 2)
 }
 
 func (impl *ziplistImpl) removeRangeByEle(min, max []byte, minex, maxex bool) uint64 {
-	minIdx, offset, ok := impl.Find(min)
-	if !ok {
-		return 0
+	offset := uint32(0)
+	idx, num := uint16(0), uint16(0)
+	for entry := range impl.Iter() {
+		if idx%2 != 0 {
+			idx++
+			continue
+		}
+		if (maxex && slices.Compare(entry.Content, max) > 0) ||
+			(!maxex && slices.Compare(entry.Content, max) >= 0) {
+			break
+		}
+		if (minex && slices.Compare(entry.Content, min) >= 0) ||
+			(!minex && slices.Compare(entry.Content, min) > 0) {
+			if offset == 0 {
+				offset = entry.Offset
+			}
+			num++
+		}
+		idx++
 	}
-	maxIdx, _, ok := impl.Find(max)
-	if !ok {
-		return 0
-	}
-	removed := impl.RemoveFromPos(offset, 2*(maxIdx-minIdx))
-	return uint64(len(removed))
+	removed := impl.RemoveFromPos(offset, 2*num)
+	return uint64(len(removed) / 2)
 }
 
 func (impl *ziplistImpl) removeRangeByScore(min, max float64, minex, maxex bool) uint64 {
-	minIdx, offset, ok := impl.Find(util.EncodeFloat(min))
-	if !ok {
-		return 0
+	var (
+		prevEntry ds.Entry
+		offset    = uint32(0)
+		idx, num  = uint16(0), uint16(0)
+	)
+	for entry := range impl.Iter() {
+		if idx%2 == 0 {
+			idx++
+			prevEntry = entry
+			continue
+		}
+		score := util.DecodeFloat(entry.Content)
+		if (maxex && score > max) || (!maxex && score >= max) {
+			break
+		}
+		if (minex && score >= min) || (!minex && score > min) {
+			if offset == 0 {
+				offset = prevEntry.Offset
+			}
+			num++
+		}
+		idx++
 	}
-	maxIdx, _, ok := impl.Find(util.EncodeFloat(max))
-	if !ok {
-		return 0
-	}
-	// Get the offset of min element.
-	offset = impl.PrevLen(offset)
-	removed := impl.RemoveFromPos(offset, 2*(maxIdx-minIdx))
-	return uint64(len(removed))
+	removed := impl.RemoveFromPos(offset, 2*num)
+	return uint64(len(removed) / 2)
 }
 
 func (impl *ziplistImpl) rangeByRank(min, max uint64, minex, maxex bool, direct int) [][]byte {

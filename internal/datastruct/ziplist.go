@@ -445,12 +445,12 @@ func (zl *Ziplist) PopLeft() []byte {
 func (zl *Ziplist) RemoveHead(num, skipnum uint16) ([][]byte, uint16, bool) {
 	// If there are no entry that need to be skipped, trying to delete zl directly.
 	if skipnum == 0 {
-		removes, pass := zl.removeAll(num)
+		removes, pass := zl.tryRemoveAll(num)
 		if pass {
 			return removes, 0, pass
 		}
 	}
-	// If the skipnum exceeds the zllen, it indicates that no entry in zl can be deleted.
+	// If the skipnum exceeds the zllen, it indicates that no entry in zl should be deleted.
 	n := zl.Len()
 	if skipnum >= n {
 		return nil, n, true
@@ -506,7 +506,7 @@ func (zl *Ziplist) offsetHeadSkipN(n uint16) uint32 {
 func (zl *Ziplist) RemoveTail(num, skipnum uint16) ([][]byte, uint16, bool) {
 	// If there are no entry that need to be skipped, trying to delete zl directly.
 	if skipnum == 0 {
-		removes, pass := zl.removeAll(num)
+		removes, pass := zl.tryRemoveAll(num)
 		if pass {
 			return removes, 0, pass
 		}
@@ -582,11 +582,17 @@ func (zl *Ziplist) offsetTailSkipN(n uint16) uint32 {
 	return offset
 }
 
-func (zl *Ziplist) removeAll(num uint16) ([][]byte, bool) {
+func (zl *Ziplist) tryRemoveAll(num uint16) ([][]byte, bool) {
 	n := zl.Len()
 	num = Cond(num > n, n, num)
 	if num == n {
 		entries := zl.getAllEntries()
+		tailEntrySize := zl.entrySize(zl.TailOffset())
+		zl.shrink(zl.HeadOffset(), zl.TailOffset()+tailEntrySize)
+		zl.SetLen(0)
+		zl.SetBytes(ZiplistHeaderSize + ZiplistEndSize)
+		zl.SetTailOffset(ZiplistHeaderSize)
+		(*zl)[ZiplistHeaderSize+ZiplistEndSize-1] = ZiplistEnd
 		return entries, true
 	}
 	return nil, false
@@ -637,9 +643,9 @@ func (zl *Ziplist) visualize() {
 }
 
 // Find determines whether the entry exists. the index and the offset will be returned if exists.
-func (zl *Ziplist) Find(ele []byte) (uint16, uint32, bool) {
+func (zl *Ziplist) Find(content []byte) (uint16, uint32, bool) {
 	for entry := range zl.Iter() {
-		if slices.Compare(ele, entry.Content) == 0 {
+		if slices.Compare(content, entry.Content) == 0 {
 			return entry.Index, entry.Offset, true
 		}
 	}

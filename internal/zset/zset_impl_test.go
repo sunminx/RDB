@@ -17,12 +17,35 @@ func TestZiplistImplAdd(t *testing.T) {
 
 func TestZiplistImplRemoveRangeByRank(t *testing.T) {
 	impl := newZiplistImpl()
-	for i := 1; i < 1024; i++ {
+	for i := 0; i < 1024; i++ {
 		_ = impl.add(float64(i), []byte(strings.Repeat(strconv.Itoa(i), 10)))
 	}
-	n := impl.removeRangeByRank(0, 1022, true, true)
-	t.Log(n)
-	if n != 1022 {
+	n := impl.removeRangeByRank(0, 1024, true, true)
+	if n != 1024 {
+		t.Error("removeRangeByRank failed")
+	}
+}
+
+func TestZiplistImplRemoveRangeByEle(t *testing.T) {
+	impl := newZiplistImpl()
+	for i := 1; i < 10; i++ {
+		_ = impl.add(float64(i), []byte(strings.Repeat(strconv.Itoa(i), 10)))
+	}
+	min := []byte(strings.Repeat(strconv.Itoa(1), 10))
+	max := []byte(strings.Repeat(strconv.Itoa(9), 10))
+	n := impl.removeRangeByEle(min, max, true, true)
+	if n != 9 {
+		t.Error("removeRangeByRank failed")
+	}
+}
+
+func TestZiplistImplRemoveRangeByScore(t *testing.T) {
+	impl := newZiplistImpl()
+	for i := 0; i < 1024; i++ {
+		_ = impl.add(float64(i), []byte(strings.Repeat(strconv.Itoa(i), 10)))
+	}
+	n := impl.removeRangeByScore(0, 1024, true, true)
+	if n != 1024 {
 		t.Error("removeRangeByRank failed")
 	}
 }
